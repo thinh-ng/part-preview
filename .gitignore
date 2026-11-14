@@ -1,0 +1,8 @@
+__pycache__/
+state/
+web/node_modules/
+web/dist/
+*.tmp
+
+# Built from a third-party design (Josh-3D Card Shuffler); kept local, not redistributed.
+models/card_tray/
