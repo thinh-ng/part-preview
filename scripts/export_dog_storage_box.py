@@ -1,6 +1,6 @@
 """Export the dog storage box as one Bambu Studio 3MF with plates, from a part-preview server's saved values.
 
-Plate 1 is the seam test (print it first): one short strip per joint, plate 2 is half A (with the clip when the top joint uses one), plate 3 is half B. The file layout copies what
+Plate 1 is the seam test (print it first): the seam of the box built as low as both joints allow, plate 2 is half A (with the clip when the top joint uses one), plate 3 is half B. The file layout copies what
 Bambu Studio itself writes (wrapper objects, one mesh file per part, plates in model_settings.config).
 
 Preview images (plate pictures and a cover of the assembled box) are rendered with pyvista.
@@ -176,13 +176,12 @@ def small_parts(suffix=""):
 
 
 reach = model.a_reach({**model.SCREW, **values})   # half A's floor tabs or top overlap tabs reach past the seam
-floor_top, top_bottom = model.test_strip_heights(values)   # the seam test is two short strips, one per joint
+test_height = model.seam_test_height(values)
+test_a, test_b, test_clip, _, _ = model.parts(dict(values, height=test_height))
 plates = [
     ("Seam test - print first", row([
-        ("floor joint test A", mesh_of(a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, floor_top))),
-        ("floor joint test B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, floor_top))),
-        ("top joint test A", mesh_of(a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, top_bottom, 300))),
-        ("top joint test B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, top_bottom, 300))),
+        ("seam test half A", mesh_of(test_a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, 300))),
+        ("seam test half B", mesh_of(test_b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
         *small_parts(" (test)")])),
 ]
 plates += [("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),

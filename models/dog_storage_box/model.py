@@ -560,23 +560,25 @@ def overlap_bite(p):
     return p["screw_len"] - tab_under_head - LOOSE * math.sqrt(2)
 
 
-TEST_MARGIN = 2.0          # plain wall kept beyond the last tested feature in a test strip
+TEST_MARGIN = 2.0          # plain wall kept between the floor joint and the top joint in the seam test
 
 
-def test_strip_heights(p):
-    """(top of the floor-joint strip, bottom of the top-joint strip): the seam test is these two strips,
-    each holding one joint whole, instead of the full wall height."""
+def seam_test_height(p):
+    """Lowest box height that still holds the floor joint and the top joint whole without them meeting.
+
+    The floor joint is set from the floor and the top joint from the rim, so the seam test is the same box
+    built at this height: both joints exactly as printed in the full box, only the plain wall between gone.
+    """
     p = {**SCREW, **p}
     k = layout(p)
-    H, wall = p["height"], p["wall"]
-    floor_strip_top = k["boss_h"] + TEST_MARGIN
+    wall = p["wall"]
+    floor_joint = k["boss_h"]
     if p["top_joint"] >= 0.5:
-        top = H - DIVIDER_DROP
-        seat_bottom = top - (p["head_h"] + HEAD_CLEAR) - LONGEST_SCREW - 0.5 - SEAT_FLOOR
-        lowest = seat_bottom - (OVERLAP_REACH + 2.0 - wall)    # foot of the seat's 45° underside
+        seat_bottom = DIVIDER_DROP + p["head_h"] + HEAD_CLEAR + LONGEST_SCREW + 0.5 + SEAT_FLOOR
+        top_joint = seat_bottom + OVERLAP_REACH + 2.0 - wall    # down to the foot of the seat's 45° underside
     else:
-        lowest = H - SEAM_DROP + UNDER_HEAD - LONGEST_SCREW - 0.5   # bottom of the clip posts' pilot holes
-    return floor_strip_top, lowest - TEST_MARGIN
+        top_joint = SEAM_DROP - UNDER_HEAD + LONGEST_SCREW + 0.5   # down to the clip posts' pilot holes
+    return math.ceil(floor_joint + TEST_MARGIN + top_joint)
 
 
 def build(**p):
