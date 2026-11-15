@@ -21,8 +21,8 @@ PARAMS = [
     dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=183.0),
     dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=105.0),
     dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=2.1),
-    dict(key="tab_len", label="Floor tab reach under B (mm)", min=8, max=30, step=0.5, default=10.0),
-    dict(key="tab_w", label="Floor tab width (mm)", min=8, max=24, step=0.5, default=10.0),
+    dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=12.0),
+    dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=12.0),
     dict(key="tab_inset", label="Tabs in from long sides (mm)", min=10, max=50, step=1, default=25.0),
     dict(key="floor_style", label="Screw anchor", min=0, max=1, step=1, default=1,
          options=["Two round bumps", "Raised floor sloping away"]),
@@ -67,10 +67,9 @@ EAR_MARGIN = 1.6           # clip plastic around the screw-head recess on each e
 # without support, which makes the tab thick; these sizes leave the M3 x 12 about 6.5 mm of bite in half B.
 OVERLAP_REACH = 13.6       # how far each tab reaches over half B
 OVERLAP_TIP = 2.0          # tab thickness at its tip
-OVERLAP_W = 11.0           # tab width along the seam
+OVERLAP_W = 12.0           # tab width along the seam
 OVERLAP_SCREW_X = 6.0      # screw distance from the seam face
 OVERLAP_POST_MARGIN = 1.5  # half B's post reaches this much past the tab on each side
-PILOT_DEPTH = 7.0
 CORNER_R = 8.0             # outside vertical corners
 CELL_R = 4.0               # inside vertical corners at dividers and the seam
 FLOOR_FILLET = 3.0         # floor-to-wall round inside each compartment
@@ -82,9 +81,10 @@ HOLE_EDGE_R = 1.5
 LOW_DIVIDER_GAP = 3.0      # section 3a/3b divider top sits this far below the hand-hole band
 MIN_SECTION = 15.0
 SEG = 48
-# One standard screw everywhere: M3 x 12, socket head (ISO 4762, head 5.5 x 3) or pan head (ISO 7045, 5.6 x 2.4).
-# The recess fits either head; the screw cuts its own thread in the pilot hole.
-SCREW = dict(screw_d=3.0, screw_len=12.0, head_d=5.7, head_h=3.0, pilot_d=2.5)
+# One screw everywhere: 3 mm self-tapping, 12 or 13 mm long (ST2.9: pan ISO 7049, flat ISO 7050, or round/truss).
+# The flat-bottomed head recess takes any of those heads up to 7 x 3 mm; a flat head seats on the hole's edge.
+SCREW = dict(screw_d=2.9, screw_len=12.0, head_d=7.0, head_h=3.0, pilot_d=2.4)
+LONGEST_SCREW = 13.0       # pilot holes are deep enough for the 13 mm ISO length too
 PRY_NOTCH_W, PRY_NOTCH_L = 2.5, 4.0   # sloped notch: a screwdriver tip slides down it and under the cap edge
 COLOR_A = (0.30, 0.47, 0.66)      # blue
 COLOR_B = (0.96, 0.52, 0.09)      # orange
@@ -323,7 +323,7 @@ def layout(p):
     counterbore_depth = p["head_h"] + 0.5
     tab_h = counterbore_depth + UNDER_HEAD
     bite = p["screw_len"] - UNDER_HEAD - LOOSE          # thread length inside half B's boss
-    pilot_top = tab_h + LOOSE + bite + 0.5
+    pilot_top = tab_h + LOOSE + (LONGEST_SCREW - UNDER_HEAD - LOOSE) + 0.5
     hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
     return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
                 low_divider=hand_bottom - LOW_DIVIDER_GAP,
@@ -468,7 +468,8 @@ def parts(p):
         caps = []
         cap_d = counterbore_d - HOLE_SHRINK - 2 * press_fit() - 0.1
         for y_lo, y_hi in ((wall - 1, wall + POST_LEN), (W - wall - POST_LEN, W - wall + 1)):
-            ys = (y_lo + y_hi) / 2 + (0.5 if y_lo < W / 2 else -0.5)
+            ear_r = counterbore_d / 2 + BED_CHAMFER + EAR_MARGIN
+            ys = wall + ear_r + LOOSE if y_lo < W / 2 else W - wall - ear_r - LOOSE   # end tab clears the long wall
             # Over a post only the clip's top remains; its legs would hit the post and the corner fillets.
             clip -= cube(LA - outer - 1, LA + outer + 1, y_lo - 1, y_hi + LOOSE, seam_top - p["clip_leg"] - 1, seam_top)
             # The whole post is in half A's corner, so the screw cuts its thread into one solid piece;
@@ -476,7 +477,6 @@ def parts(p):
             xs = LA - wall - POST_W / 2
             post = rounded_box_section(LA - wall - POST_W, LA - wall + 0.5, y_lo, y_hi, [2.0] * 4).extrude(seam_top)
             a += post ^ shell_a
-            ear_r = counterbore_d / 2 + BED_CHAMFER + EAR_MARGIN
             ear = mf.CrossSection.batch_hull([
                 mf.CrossSection.circle(ear_r, SEG).translate([xs, ys]),
                 mf.CrossSection.square([0.01, 2 * ear_r]).translate([LA, ys - ear_r])])
@@ -486,7 +486,7 @@ def parts(p):
                 ear_layers.append(layer(ear.offset(-CLIP_ROUND * (1 - math.cos(angle)), mf.JoinType.Round),
                                         clip_top - CLIP_ROUND + CLIP_ROUND * math.sin(angle) - 0.01))
             clip += mf.Manifold.batch_hull(ear_layers)
-            a -= cyl_z(xs, ys, seam_top - PILOT_DEPTH, seam_top + 0.01, p["pilot_d"] + HOLE_SHRINK)
+            a -= cyl_z(xs, ys, seam_top + UNDER_HEAD - LONGEST_SCREW - 0.5, seam_top + 0.01, p["pilot_d"] + HOLE_SHRINK)
             clip -= cyl_z(xs, ys, seam_top - 1, clip_top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
             clip -= cyl_z(xs, ys, seam_top + UNDER_HEAD, clip_top + 1, counterbore_d)
             # The clip prints top-down, so this recess opens on the bed side: flare its mouth.
@@ -557,7 +557,7 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
         xs = LA + OVERLAP_SCREW_X
         a -= cyl_z(xs, ys, z_low - 1, top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
         a -= cyl_z(xs, ys, head_bottom, top + 1, counterbore_d)
-        b -= cyl_z(xs, ys, head_bottom - p["screw_len"] - 0.5, top, p["pilot_d"] + HOLE_SHRINK)
+        b -= cyl_z(xs, ys, head_bottom - LONGEST_SCREW - 0.5, top, p["pilot_d"] + HOLE_SHRINK)
         screws.append(cyl_z(xs, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
                       + cyl_z(xs, ys, head_bottom - p["screw_len"], head_bottom, p["screw_d"], 24))
         cap, notch = cap_and_notch(xs, ys, top, counterbore_d)
@@ -635,7 +635,7 @@ def stats(p: dict[str, float]) -> dict[str, str]:
         "screw bite": f"{k['bite']:.1f} mm, {bite_ok}",
         f"screw anchor in section {after + 1}": anchor,
         "outer size": f"{L:.0f} x {W:.0f} x {H:.0f} mm",
-        "hardware": (f"{2 + top_count}x M{p['screw_d']:g} x {p['screw_len']:.0f} mm (ISO 4762 socket or ISO 7045 pan head): "
+        "hardware": (f"{2 + top_count}x 3 mm self-tapping (ST{p['screw_d']:g}) x 12-13 mm, pan, flat or round head: "
                      f"2 floor, {top_count} top; {top_count} printed caps" + ("" if overlap else ", 1 clip")),
         "top screw bite": (f"{overlap_bite(p, H - DIVIDER_DROP):.1f} mm into half B's posts" if overlap
                            else f"{p['screw_len'] - UNDER_HEAD:.1f} mm into half A's posts"),
