@@ -27,7 +27,7 @@ OUT = HERE.parent / "prints" / "dog-storage-box" / "dog-storage-box.3mf"
 SERVER = sys.argv[1] if len(sys.argv) > 1 else "http://pi4.local:8765"
 BED = 256.0
 PLATE_STRIDE = BED * 1.2      # Bambu Studio's spacing between neighbouring plates, in x and in y
-GAP = 5.0                     # between parts on a plate
+GAP = 3.0                     # between parts on a plate
 
 values = json.load(urllib.request.urlopen(f"{SERVER}/api/schema?model=dog_storage_box", timeout=10))["values"]
 a, b, clip, _screws, _info = model.parts(dict(values))
@@ -128,15 +128,31 @@ def small_parts(suffix=""):
     return [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
 
 
+def stacked(rows):
+    """Rows of parts front to back, each row centred left to right, the whole stack centred on the plate."""
+    laid = [row(r) for r in rows]
+    depths = [max(m.extents[1] for _, m, _, _ in r) for r in laid]
+    total = sum(depths) + GAP * (len(rows) - 1)
+    assert total <= BED - 2, f"{total:.0f} mm of rows does not fit the plate"
+    placed, y = [], (BED - total) / 2
+    for r, depth in zip(laid, depths):
+        placed += [(name, mesh, cx, y + depth / 2) for name, mesh, cx, _ in r]
+        y += depth + GAP
+    return placed
+
+
 reach = model.a_reach({**model.SCREW, **values})   # half A's floor tabs or top overlap tabs reach past the seam
 plates = [
     ("Seam test - print first", row([
         ("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, 300))),
         ("seam test half B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
         *small_parts(" (test)")])),
-    ("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
-    ("Half B", row([("half B", mesh_of(b))])),
 ]
+if clip is None:   # both halves fit one plate, one behind the other
+    plates.append(("Dog storage box", stacked([[("half B", mesh_of(b))], [("half A", mesh_of(a))]])))
+else:
+    plates += [("Half A + clip", row([("half A", mesh_of(a)), *small_parts()])),
+               ("Half B", row([("half B", mesh_of(b))]))]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
 
 files, items, rels, objects_cfg, plates_cfg = {}, [], [], [], []
