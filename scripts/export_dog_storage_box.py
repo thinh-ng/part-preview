@@ -187,6 +187,23 @@ plates += [("Half A" + (" + clip" if clip is not None else ""), row([("half A", 
            ("Half B", row([("half B", mesh_of(b))]))]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
 
+FLAT_ROOF_LIMIT = 250.0   # mm²; one flat downward-facing area larger than this gets support
+
+
+def needs_support(mesh):
+    """Area of the largest flat roof (facing straight down, above the bed) if it calls for support, else 0.
+
+    The parts print in their only usable orientation (open side up), so a large flat roof is supported
+    rather than rotated away; support stands on the bed only, never on the part.
+    """
+    down = np.where((mesh.face_normals[:, 2] < -0.95) & (mesh.triangles_center[:, 2] > 0.3))[0]
+    if len(down) == 0:
+        return 0.0
+    roofs = mesh.submesh([down], append=True).split(only_watertight=False)
+    largest = max(r.area for r in roofs)
+    return largest if largest > FLAT_ROOF_LIMIT else 0.0
+
+
 files, items, rels, objects_cfg, plates_cfg = {}, [], [], [], []
 next_id = 1
 for plate_index, (plate_name, parts) in enumerate(plates):
@@ -206,8 +223,13 @@ for plate_index, (plate_name, parts) in enumerate(plates):
         col, plate_row = plate_index % COLUMNS, plate_index // COLUMNS
         items.append((wrapper_id, mesh_id, path, cx + col * PLATE_STRIDE, cy - plate_row * PLATE_STRIDE))
         label = escape(name, {'"': "&quot;"})
+        support = needs_support(mesh)
+        if support:
+            print(f"  support on (build plate only) for {name}: {support:.0f} mm² of flat roof")
+        support_cfg = ('<metadata key="enable_support" value="1"/>'
+                       '<metadata key="support_on_build_plate_only" value="1"/>') if support else ''
         objects_cfg.append(f'<object id="{wrapper_id}"><metadata key="name" value="{label}"/>'
-                           '<metadata key="extruder" value="1"/>'
+                           f'<metadata key="extruder" value="1"/>{support_cfg}'
                            f'<part id="{mesh_id}" subtype="normal_part"><metadata key="name" value="{label}"/>'
                            '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/></part></object>')
         instances.append(f'<model_instance><metadata key="object_id" value="{wrapper_id}"/>'
