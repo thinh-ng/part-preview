@@ -503,7 +503,7 @@ def parts(p):
 
 
 def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
-    """Three tabs on half A's seam wall reach over half B's and are screwed down into posts in half B."""
+    """Two tabs on half A's seam wall reach over half B's and are screwed down into seats in half B."""
     W, wall = WIDTH, p["wall"]
     x1 = LA + OVERLAP_REACH
     z_low = top - OVERLAP_TIP - OVERLAP_REACH
@@ -511,7 +511,8 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
     recess = p["head_h"] + HEAD_CLEAR
     head_bottom = top - recess
     screws = []
-    for ys in (wall + 1 + OVERLAP_W / 2, W / 2, W - wall - 1 - OVERLAP_W / 2):
+    # One tab at each end of the seam; the floor screws and these hold it, the middle of the top edge stays free.
+    for ys in (wall + 1 + OVERLAP_W / 2, W - wall - 1 - OVERLAP_W / 2):
         def along_y(section, width):
             return section.extrude(width).rotate([90, 0, 0]).translate([0, ys + width / 2, 0])
 
@@ -603,7 +604,7 @@ def stats(p: dict[str, float]) -> dict[str, str]:
     half_b = L - k["seam"]
     bite_ok = "ok" if k["bite"] >= 2 * p["screw_d"] else f"short, aim for {2 * p['screw_d']:.0f}+ mm"
     overlap = p.get("top_joint", 1) >= 0.5
-    top_count = 3 if overlap else 2
+    top_count = 2
     ramp = ramp_length(p, k)
     anchor = (f"floor raised {k['boss_h']:.1f} mm for {p['tab_len'] + LOOSE + BOSS_MARGIN:.0f} mm, "
               f"sloping down over {ramp:.0f} mm (steepest {math.degrees(math.atan(1.875 * (k['boss_h'] - FLOOR) / ramp)):.0f}°)"
