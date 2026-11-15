@@ -177,7 +177,9 @@ def small_parts(suffix=""):
 
 reach = model.a_reach({**model.SCREW, **values})   # half A's floor tabs or top overlap tabs reach past the seam
 test_height = model.seam_test_height(values)
-test_a, test_b, test_clip, _, _ = model.parts(dict(values, height=test_height))
+# The hand holes are at the box ends, outside the seam test; the smallest one keeps the low test box valid.
+smallest_hand_hole = min(d["min"] for d in model.PARAMS if d["key"] == "hand_h")
+test_a, test_b, test_clip, _, _ = model.parts(dict(values, height=test_height, hand_h=smallest_hand_hole))
 plates = [
     ("Seam test - print first", row([
         ("seam test half A", mesh_of(test_a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, 300))),
