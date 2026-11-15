@@ -31,7 +31,7 @@ PARAMS = [
     dict(key="hand_w", label="Hand hole width (mm)", min=40, max=105, step=1, default=65.0),
     dict(key="hand_h", label="Hand hole height (mm)", min=10, max=45, step=1, default=15.0),
     dict(key="clip_leg", label="Top clip reach down (mm)", min=4, max=20, step=0.5, default=8.0),
-    dict(key="clip_gap", label="Top clip gap per side (mm)", min=0.0, max=0.4, step=0.05, default=0.10),
+    dict(key="clip_gap", label="Top clip gap per side (mm)", min=0.0, max=0.5, step=0.05, default=0.25),
     dict(key="explode", label="Explode view (mm)", min=0, max=80, step=1, default=0.0),
     dict(key="show", label="Show", min=0, max=4, step=1, default=0,
          options=["Whole box", "Half A only", "Half B only", "Top clip only", "Screw caps only"]),
@@ -45,6 +45,8 @@ FLOOR = 1.6                 # 8 layers at 0.2
 DIVIDER = 1.68              # 4 lines at 0.42
 LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured)
 HOLE_SHRINK = 0.15
+ELEPHANT_FOOT = 0.2         # tolerances.json elephant_foot (measured: false): first layer spreads this much per side
+BED_CHAMFER = 0.4           # slant on bed-side edges that slide into or press against another part
 NEST_H = 4.0                # stacking step for future boxes
 DIVIDER_DROP = 5.0
 SEAM_DROP = 10.5            # seam walls stop this far below the rim: room for the screwed clip under a stacked box
@@ -97,8 +99,16 @@ def tongue_outline(x0, seam, y, reach, width):
     return mf.CrossSection.batch_hull([rect, disc])
 
 
-def tongue(x0, seam, y, reach, width, z0, z1):
-    return tongue_outline(x0, seam, y, reach, width).extrude(z1 - z0).translate([0, 0, z0])
+def tongue(x0, seam, y, reach, width, z0, z1, bottom_chamfer=0.0):
+    """Tongue from z0 to z1; a positive chamfer slants its bottom edge in, a negative one flares it out."""
+    outline = tongue_outline(x0, seam, y, reach, width)
+    body = outline.extrude(z1 - z0).translate([0, 0, z0])
+    if bottom_chamfer == 0:
+        return body
+    c = abs(bottom_chamfer)
+    foot = mf.Manifold.batch_hull([layer(outline.offset(-bottom_chamfer, mf.JoinType.Round), z0),
+                                   layer(outline, z0 + c)])
+    return body - cube(-1e3, 1e3, -1e3, 1e3, z0 - 1, z0 + c) + foot if bottom_chamfer > 0 else body + foot
 
 
 def round_inset(radius, depth):
@@ -369,6 +379,11 @@ def parts(p):
     # The seam walls stop below the clip; the cut is wide enough to clear the corner fillets there.
     seam_cut = cube(LA - wall - CELL_R - 1, LA + wall + CELL_R + 1, wall, W - wall, seam_top, H + 1)
     a, b = a - seam_cut, b - seam_cut
+    # The first layer spreads on both seam faces and would hold the halves apart: slant those bottom edges.
+    c = ELEPHANT_FOOT + 0.1
+    seam_slant = mf.CrossSection([[(-c, -1), (c, -1), (c, 0), (0, c), (-c, 0)]])
+    seam_slant = seam_slant.extrude(W + 2).rotate([90, 0, 0]).translate([LA, W + 1, 0])
+    a, b = a - seam_slant, b - seam_slant
 
     # Rounded divider tops.
     def top_round_y(x_center, z):
@@ -402,8 +417,10 @@ def parts(p):
         if not raised:
             outline = tongue_outline(LA, LA, y, tab_len + LOOSE + BOSS_MARGIN, k["boss_w"])
             b += smooth_boss(outline, k["boss_h"], boss_round(k, p), FLOOR + p["boss_smooth"]) ^ shell_b
+        # Both sit on the bed, where the first layer spreads: slant the tab's bottom edge in and flare the pocket's mouth.
         b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, -1, k["tab_h"] + LOOSE)
-        a += tongue(LA, LA, y, tab_len, tab_w, 0, k["tab_h"])
+        b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, 0, BED_CHAMFER, bottom_chamfer=-BED_CHAMFER)
+        a += tongue(LA, LA, y, tab_len, tab_w, 0, k["tab_h"], bottom_chamfer=BED_CHAMFER)
         sx = LA + tab_len - tab_w / 2
         a -= cyl_z(sx, y, -1, k["tab_h"] + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
         a -= cyl_z(sx, y, -1, k["counterbore_depth"], counterbore_d)
@@ -440,10 +457,15 @@ def parts(p):
         a, b = a - pilot, b - pilot
         clip -= cyl_z(LA, ys, seam_top - 1, clip_top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
         clip -= cyl_z(LA, ys, seam_top + UNDER_HEAD, clip_top + 1, counterbore_d)
+        # The clip prints top-down, so this recess opens on the bed side: flare its mouth.
+        clip -= mf.Manifold.cylinder(BED_CHAMFER + 0.01, counterbore_d / 2, counterbore_d / 2 + BED_CHAMFER, SEG) \
+            .translate([LA, ys, clip_top - BED_CHAMFER])
         head_bottom = seam_top + UNDER_HEAD
         screws.append(cyl_z(LA, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
                       + cyl_z(LA, ys, head_bottom - p["screw_len"], head_bottom, p["screw_d"], 24))
-        caps.append(cyl_z(LA, ys, clip_top - CAP_H, clip_top, cap_d))
+        lead_in = 0.3   # the cap's bed-side edge is the one pressed in first
+        caps.append(cyl_z(LA, ys, clip_top - CAP_H + lead_in, clip_top, cap_d)
+                    + mf.Manifold.cylinder(lead_in, cap_d / 2 - lead_in, cap_d / 2, SEG).translate([LA, ys, clip_top - CAP_H]))
         toward_middle = 1 if ys < W / 2 else -1
         edge = ys + toward_middle * counterbore_d / 2
         deep = sorted((edge - toward_middle * 0.8, edge + toward_middle * 0.01))
