@@ -84,8 +84,9 @@ SEG = 48
 # One screw everywhere: 3 mm self-tapping, 12 or 13 mm long (ST2.9: pan ISO 7049, flat ISO 7050, or round/truss).
 # The flat-bottomed head pocket takes any of those heads up to 7 mm wide; pan heads (2.2 mm) sit about flush,
 # lower round and flat heads sit a little below, and a flat head seats on the hole's edge.
-SCREW = dict(screw_d=2.9, screw_len=12.0, head_d=7.0, head_h=2.2, pilot_d=2.4)
-LONGEST_SCREW = 13.0       # pilot holes are deep enough for the 13 mm ISO length too
+SCREW = dict(screw_d=2.9, screw_len=12.0, floor_screw_len=8.0, head_d=7.0, head_h=2.2, pilot_d=2.4)
+LONGEST_SCREW = 13.0       # top pilot holes are deep enough for the 13 mm ISO length too
+# Floor screws are 3 x 8: the shortest length that still bites 2x its diameter; a longer one makes the bumps taller.
 
 COLOR_A = (0.30, 0.47, 0.66)      # blue
 COLOR_B = (0.96, 0.52, 0.09)      # orange
@@ -323,8 +324,8 @@ def layout(p):
     section_3 = LENGTH - 4 * wall - DIVIDER - p["section_1"] - p["section_2"]
     counterbore_depth = p["head_h"] + HEAD_CLEAR
     tab_h = counterbore_depth + UNDER_HEAD
-    bite = p["screw_len"] - UNDER_HEAD - LOOSE          # thread length inside half B's boss
-    pilot_top = tab_h + LOOSE + (LONGEST_SCREW - UNDER_HEAD - LOOSE) + 0.5
+    bite = p["floor_screw_len"] - UNDER_HEAD - LOOSE    # thread length inside half B's boss
+    pilot_top = tab_h + LOOSE + bite + 0.5
     hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
     return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
                 low_divider=hand_bottom - LOW_DIVIDER_GAP,
@@ -444,7 +445,7 @@ def parts(p):
         b -= cyl_z(sx, y, k["tab_h"], k["pilot_top"], p["pilot_d"] + HOLE_SHRINK)
         head_bottom = k["counterbore_depth"] - p["head_h"]
         screws.append(cyl_z(sx, y, head_bottom, k["counterbore_depth"], p["head_d"])
-                      + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["screw_len"], p["screw_d"], 24))
+                      + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["floor_screw_len"], p["screw_d"], 24))
 
     if overlap:
         a, b, top_screws = overlap_tabs(p, a, b, shell, shell_b, LA, seam_top, counterbore_d)
@@ -638,8 +639,8 @@ def stats(p: dict[str, float]) -> dict[str, str]:
         "screw bite": f"{k['bite']:.1f} mm, {bite_ok}",
         f"screw anchor in section {after + 1}": anchor,
         "outer size": f"{L:.0f} x {W:.0f} x {H:.0f} mm",
-        "hardware": (f"{2 + top_count}x 3 mm self-tapping (ST{p['screw_d']:g}) x 12-13 mm, pan, flat or round head: "
-                     f"2 floor, {top_count} top" + ("" if overlap else "; 1 clip")),
+        "hardware": (f"3 mm self-tapping (ST{p['screw_d']:g}), pan, flat or round head: 2x {p['floor_screw_len']:.0f} mm (floor), "
+                     f"{top_count}x 12-13 mm (top)" + ("" if overlap else "; 1 clip")),
         "top screw bite": (f"{overlap_bite(p):.1f} mm into half B's posts" if overlap
                            else f"{p['screw_len'] - UNDER_HEAD:.1f} mm into half A's posts"),
         "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head pocket {p['head_d'] + 2 * LOOSE:.1f} mm wide x {p['head_h'] + HEAD_CLEAR:.1f} mm deep",
