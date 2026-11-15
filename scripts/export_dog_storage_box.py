@@ -57,8 +57,10 @@ def with_owner_colours(settings_text):
     return json.dumps(settings, indent=4)
 
 
-# Changes from stock 0.20mm Standard: solid 2.1 mm walls and more plastic around the screw pilot holes.
-PRINT_OVERRIDES = {"wall_loops": "3", "wall_generator": "arachne"}
+# Changes from stock 0.20mm Standard, strength first: solid walls, a thick solid ring around every screw hole,
+# and 40% gyroid (strong in every direction) in the few thick parts. Gains above ~50% infill are small.
+PRINT_OVERRIDES = {"wall_loops": "4", "wall_generator": "arachne",
+                   "sparse_infill_density": "40%", "sparse_infill_pattern": "gyroid"}
 
 
 def with_print_overrides(settings_text):
