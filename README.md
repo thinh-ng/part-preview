@@ -21,6 +21,10 @@ python server.py
 Open http://127.0.0.1:8765/. On Windows, `start.cmd` builds the page on first run, starts the
 server and opens the browser. Use `--port` or `PART_PREVIEW_PORT` for another port.
 
+To serve other devices on the LAN, bind another address and allow each host name or IP the page
+will be opened under, for example
+`python server.py --host 0.0.0.0 --allow-host 192.168.0.7 --allow-host pi4 --allow-host pi4.local`.
+
 To work on the page, run `npm run dev` in `web/` alongside `python server.py`. Vite serves the page
 on port 5173 with hot reload and forwards `/api` to the Python server.
 
@@ -56,4 +60,5 @@ GET  /api/version?model=<id>     {version} of the last built mesh, 0 if never bu
 ```
 
 Only the newest build request for a model writes its mesh; older queued requests answer
-`superseded`. Requests must use the `127.0.0.1:<port>` or `localhost:<port>` host name.
+`superseded`. Requests must use the `127.0.0.1:<port>` or `localhost:<port>` host name, or one
+added with `--allow-host`.

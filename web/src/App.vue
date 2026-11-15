@@ -11,6 +11,7 @@ import { formatFromFileName } from "@/lib/mesh-source"
 import type { MeshSource } from "@/lib/mesh-source"
 
 const STORAGE_KEY = "part-preview-model"
+const NARROW_SCREEN = "(max-width: 40rem)"   // keep in step with the @media rule below
 
 const models = ref<ModelSummary[]>([])
 const modelsLoaded = ref(false)
@@ -21,6 +22,8 @@ const droppedName = ref("")
 const dragDepth = ref(0)
 const cut = ref(1)
 const seeThrough = ref(false)
+// On a phone the panel starts closed so the part is visible; on a wide screen it starts open.
+const panelOpen = ref(!window.matchMedia(NARROW_SCREEN).matches)
 
 const { schema, values, stats, error, builtAt, mesh, updateValues, resetToDefaults, reload } = usePartModel(selectedId)
 
@@ -28,6 +31,10 @@ const editedSchema = computed(() => (droppedMesh.value === null ? schema.value :
 const shownMesh = computed(() => droppedMesh.value ?? mesh.value)
 const shownError = computed(() => pageError.value || error.value)
 const isDragging = computed(() => dragDepth.value > 0)
+// Errors live in the panel; a closed panel would leave an empty view with no reason given.
+watch(shownError, message => {
+  if (message) panelOpen.value = true
+})
 const status = computed(() => {
   if (droppedName.value) return `Viewing ${droppedName.value}. Pick a model to go back to the sliders.`
   if (modelsLoaded.value && models.value.length === 0) return "No models in models/. Drop an STL or 3MF file to view it."
@@ -102,10 +109,21 @@ onMounted(() => void loadModels())
 </script>
 
 <template>
-  <main class="app" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
+  <main
+    class="app"
+    :class="{ 'panel-open': panelOpen }"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
+  >
     <PartViewer :mesh="shownMesh" :cut="cut" :see-through="seeThrough" @error="pageError = $event" />
 
-    <aside class="panel" aria-labelledby="panel-title">
+    <button class="panel-toggle" type="button" aria-controls="panel" :aria-expanded="panelOpen" @click="panelOpen = !panelOpen">
+      {{ panelOpen ? "Hide settings" : "Settings" }}
+    </button>
+
+    <aside v-show="panelOpen" id="panel" class="panel" aria-labelledby="panel-title">
       <h1 id="panel-title" class="panel-title">Part preview</h1>
       <ModelPicker v-model="selectedId" :models="models" />
       <template v-if="editedSchema">
@@ -126,7 +144,9 @@ onMounted(() => void loadModels())
       </label>
       <label class="panel-row"><input v-model="seeThrough" type="checkbox" /> See-through</label>
       <p class="panel-hint" aria-live="polite">{{ status }}</p>
-      <p class="panel-hint">Drag to rotate, right-drag to pan, scroll to zoom. Drop an STL or 3MF file on the page to view it.</p>
+      <p class="panel-hint">
+        Drag to rotate, right-drag or two-finger drag to pan, scroll or pinch to zoom. Drop an STL or 3MF file on the page to view it.
+      </p>
     </aside>
 
     <div v-if="isDragging" class="drop-overlay">Drop STL or 3MF to view</div>
@@ -134,8 +154,12 @@ onMounted(() => void loadModels())
 </template>
 
 <style scoped>
-.panel { position: fixed; inset-block-start: var(--space-3); inset-inline-start: var(--space-3);
-         inline-size: min(22rem, calc(100vw - 2 * var(--space-3))); max-block-size: calc(100vh - 2 * var(--space-3));
+.panel-toggle { position: fixed; inset-block-start: var(--space-3); inset-inline-start: var(--space-3); z-index: 1;
+                font: inherit; padding: var(--space-2) var(--space-3); background: var(--color-panel); color: var(--color-text);
+                border: 1px solid var(--color-line); border-radius: var(--radius); }
+.panel { position: fixed; inset-block-start: calc(var(--space-3) * 2 + 2.5rem); inset-inline-start: var(--space-3);
+         inline-size: min(22rem, calc(100vw - 2 * var(--space-3)));
+         max-block-size: calc(100vh - var(--space-3) * 3 - 2.5rem);
          overflow: auto; display: grid; gap: var(--space-2); background: var(--color-panel);
          border: 1px solid var(--color-line); border-radius: var(--radius); padding: var(--space-3); }
 .panel-title { font-size: var(--font-size-title); margin: 0; }
@@ -146,6 +170,15 @@ onMounted(() => void loadModels())
 .panel-error:empty { display: none; }
 .panel-rule { border: 0; border-block-start: 1px solid var(--color-line); inline-size: 100%; margin: 0; }
 .panel-button { font: inherit; justify-self: start; }
+/* Phone: the panel docks to the bottom half and the part shrinks into the top half. */
+@media (max-width: 40rem) {
+  .app.panel-open { --viewer-bottom: 50dvh; }
+  .panel { inset: auto 0 0 0; inline-size: auto; block-size: 50dvh; max-block-size: none;
+           border-radius: var(--radius) var(--radius) 0 0; border-inline: 0; border-block-end: 0; }
+  .panel-toggle { inset-block-start: auto; inset-inline-start: auto; inset-inline-end: var(--space-3);
+                  inset-block-end: calc(var(--space-3) + env(safe-area-inset-bottom)); }
+  .app.panel-open .panel-toggle { inset-block-end: calc(50dvh + var(--space-2)); }
+}
 .drop-overlay { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none;
                 background: var(--color-overlay); color: var(--color-on-overlay); font-size: var(--font-size-title); }
 </style>

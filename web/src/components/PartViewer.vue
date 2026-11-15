@@ -39,5 +39,6 @@ watch(() => seeThrough, value => partScene?.setSeeThrough(value))
 </template>
 
 <style scoped>
-.part-viewer { position: fixed; inset: 0; }
+/* --viewer-bottom is set by the page when a docked panel covers the bottom of the screen. */
+.part-viewer { position: fixed; inset: 0 0 var(--viewer-bottom, 0) 0; }
 </style>

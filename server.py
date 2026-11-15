@@ -2,7 +2,8 @@
 
 Serves the built web app (web/dist) and rebuilds a model from its slider values. A model is a folder
 under models/ whose model.py defines NAME, PARAMS (key, label, min, max, step, default),
-build(**params) -> (vertices N x 3, triangles M x 3) and optionally stats(params) -> dict[str, str].
+build(**params) -> (vertices N x 3, triangles M x 3[, triangle colors M x 3 in 0..1]) and optionally
+stats(params) -> dict[str, str].
 """
 
 from __future__ import annotations
@@ -133,8 +134,12 @@ def write_atomic(path: Path, data: bytes) -> None:
     os.replace(temp, path)
 
 
-def stl_bytes(vertices: np.ndarray, triangles: np.ndarray) -> bytes:
-    """Binary STL of a mesh, moved so it sits on z = 0."""
+def stl_bytes(vertices: np.ndarray, triangles: np.ndarray, colors: np.ndarray | None = None) -> bytes:
+    """Binary STL of a mesh, moved so it sits on z = 0.
+
+    Triangle colors use the Materialise Magics convention ("COLOR=" in the header, 5-bit RGB per
+    facet with bit 15 clear), which three.js STLLoader reads and slicers ignore.
+    """
     vertices = np.asarray(vertices, dtype=np.float64)
     vertices = vertices - [0.0, 0.0, vertices[:, 2].min()]
     corners = vertices[np.asarray(triangles)]
@@ -143,7 +148,12 @@ def stl_bytes(vertices: np.ndarray, triangles: np.ndarray) -> bytes:
     records = np.zeros(len(corners), dtype=[("normal", "<f4", 3), ("corners", "<f4", 9), ("attr", "<u2")])
     records["normal"] = normals
     records["corners"] = corners.reshape(-1, 9)
-    return b"part-preview".ljust(80, b" ") + struct.pack("<I", len(corners)) + records.tobytes()
+    header = b"part-preview"
+    if colors is not None:
+        rgb = np.rint(np.clip(np.asarray(colors, dtype=np.float64), 0, 1) * 31).astype(np.uint16)
+        records["attr"] = rgb[:, 0] | (rgb[:, 1] << 5) | (rgb[:, 2] << 10)
+        header += b" COLOR=" + bytes([128, 128, 128, 255])
+    return header.ljust(80, b" ") + struct.pack("<I", len(corners)) + records.tobytes()
 
 
 def mesh_version(model_id: str) -> int:
@@ -163,14 +173,14 @@ def build(state: PreviewState, model_id: str, raw_values: dict[str, Any]) -> dic
         if not state.is_latest(model_id, number):
             return {"ok": False, "superseded": True}
         try:
-            vertices, triangles = model.build(**values)
+            vertices, triangles, *colors = model.build(**values)
         except Exception as error:  # a model's own failure is shown to the user, not a server error
             log.info("build of %s failed: %s", model_id, error)
             return {"ok": False, "error": str(error)}
         STATE_DIR.mkdir(exist_ok=True)
         values_path, mesh_path = state_paths(model_id)
         write_atomic(values_path, json.dumps(values, indent=1).encode("utf-8"))
-        write_atomic(mesh_path, stl_bytes(vertices, triangles))
+        write_atomic(mesh_path, stl_bytes(vertices, triangles, colors[0] if colors else None))
         stats = model.stats(values) if hasattr(model, "stats") else {}
         return {"ok": True, "version": mesh_version(model_id), "values": values, "stats": stats,
                 "builtAt": datetime.now().astimezone().strftime("%H:%M:%S")}
@@ -288,15 +298,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Live 3D preview server for parametric parts.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PART_PREVIEW_PORT", DEFAULT_PORT)))
+    parser.add_argument("--host", default="127.0.0.1", help="address to bind, e.g. 0.0.0.0 to serve the LAN")
+    parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                        help="extra host name or IP the page may be opened under (repeatable)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if not (WEB_DIST / "index.html").exists():
         log.error("web/dist is missing; run `npm ci` and `npm run build` in web/ first")
         return 1
     Handler.server_state = PreviewState()
-    Handler.allowed_hosts = frozenset({f"127.0.0.1:{args.port}", f"localhost:{args.port}"})
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    log.info("part-preview on http://127.0.0.1:%d/", args.port)
+    host_names = ["127.0.0.1", "localhost", *args.allow_host]
+    Handler.allowed_hosts = frozenset(f"{name}:{args.port}" for name in host_names)
+    server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
+    log.info("part-preview on http://%s:%d/", args.host, args.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

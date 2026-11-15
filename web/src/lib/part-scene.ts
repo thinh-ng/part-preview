@@ -13,6 +13,9 @@ export type PartScene = {
 }
 
 const SEE_THROUGH_OPACITY = 0.45
+// Outline creases sharper than this; lower values also outline curved surfaces facet by facet.
+const EDGE_ANGLE_DEGREES = 30
+const FRAME_MARGIN = 1.05
 
 function cssColor(name: string): THREE.Color {
   return new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim())
@@ -48,6 +51,7 @@ export function createPartScene(container: HTMLElement): PartScene {
     side: THREE.DoubleSide,
     clippingPlanes: [clipPlane],
   })
+  const edgeMaterial = new THREE.LineBasicMaterial({ clippingPlanes: [clipPlane] })
   const bounds = new THREE.Box3()
   let current: THREE.Object3D | null = null
   let cutFraction = 1
@@ -66,7 +70,9 @@ export function createPartScene(container: HTMLElement): PartScene {
 
   function applyColors(): void {
     scene.background = cssColor("--color-bg")
-    material.color = cssColor("--color-part")
+    // Per-triangle colors are multiplied by the material color, so it goes white when they are present.
+    material.color = material.vertexColors ? new THREE.Color(0xffffff) : cssColor("--color-part")
+    edgeMaterial.color = cssColor("--color-edge")
     requestRender()
   }
   const colorScheme = window.matchMedia("(prefers-color-scheme: dark)")
@@ -82,7 +88,7 @@ export function createPartScene(container: HTMLElement): PartScene {
     if (!current) return
     scene.remove(current)
     current.traverse(object => {
-      if (object instanceof THREE.Mesh) object.geometry.dispose()
+      if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) object.geometry.dispose()
     })
     current = null
   }
@@ -101,21 +107,35 @@ export function createPartScene(container: HTMLElement): PartScene {
     }
     const nextBounds = new THREE.Box3().setFromObject(object)
     if (nextBounds.isEmpty()) return { ok: false, error: "The file contains no geometry." }
+    const meshes: THREE.Mesh[] = []
     object.traverse(child => {
-      if (child instanceof THREE.Mesh) {
-        disposeMaterial(child.material, material)
-        child.material = material
-        child.geometry.computeVertexNormals()
-      }
+      if (child instanceof THREE.Mesh) meshes.push(child)
     })
+    let hasColors = false
+    for (const child of meshes) {
+      disposeMaterial(child.material, material)
+      child.material = material
+      child.geometry.computeVertexNormals()
+      hasColors ||= "hasColors" in child.geometry && child.geometry.hasColors === true
+      child.add(new THREE.LineSegments(new THREE.EdgesGeometry(child.geometry, EDGE_ANGLE_DEGREES), edgeMaterial))
+    }
+    if (material.vertexColors !== hasColors) {
+      material.vertexColors = hasColors
+      material.needsUpdate = true
+    }
+    applyColors()
     disposeCurrent()
     current = object
     scene.add(object)
     bounds.copy(nextBounds)
     if (source.reframe) {
       const center = bounds.getCenter(new THREE.Vector3())
-      const size = bounds.getSize(new THREE.Vector3()).length()
-      camera.position.copy(center).add(new THREE.Vector3(size, -size, size * 0.8))
+      const radius = bounds.getSize(new THREE.Vector3()).length() / 2
+      // Fit the bounding sphere in the narrower of the two fields of view, so a tall phone screen shows the whole part.
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov)
+      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect)
+      const distance = (radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2)) * FRAME_MARGIN
+      camera.position.copy(center).add(new THREE.Vector3(1, -1, 0.8).normalize().multiplyScalar(distance))
       controls.target.copy(center)
       controls.update()
     }
@@ -151,6 +171,7 @@ export function createPartScene(container: HTMLElement): PartScene {
       controls.removeEventListener("change", requestRender)
       disposeCurrent()
       material.dispose()
+      edgeMaterial.dispose()
       controls.dispose()
       renderer.dispose()
       renderer.domElement.remove()

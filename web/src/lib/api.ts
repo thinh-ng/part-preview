@@ -11,6 +11,7 @@ const ParamSpec = z.object({
   max: z.number(),
   step: z.number(),
   default: z.number(),
+  options: z.array(z.string()).optional(),
 })
 const ParamValues = z.record(z.string(), z.number())
 const Stats = z.record(z.string(), z.string())
