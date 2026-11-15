@@ -30,7 +30,8 @@ Auxiliaries/.thumbnails/thumbnail_*.png  cover images
 
 ## Plates
 
-`model_settings.config` has one `<object id="<wrapper id>">` per part (`name`, `extruder`, and a
+`model_settings.config` has one `<object id="<wrapper id>">` per part (`name`, `extruder`, any
+per-object setting such as `enable_support` and `support_on_build_plate_only`, and a
 `<part id="<mesh id>" subtype="normal_part">` with an identity `matrix`) and one `<plate>` per plate:
 `plater_id` (1-based), `plater_name`, `locked`, `thumbnail_file`, `thumbnail_no_light_file`, and a
 `<model_instance>` (`object_id`, `instance_id` 0) per part on it.
