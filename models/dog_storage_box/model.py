@@ -20,7 +20,7 @@ PARAMS = [
     dict(key="height", label="Height (mm)", min=40, max=250, step=1, default=100.0),
     dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=183.0),
     dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=105.0),
-    dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=2.1),
+    dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=1.68),
     dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=12.0),
     dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=12.0),
     dict(key="tab_inset", label="Tabs in from long sides (mm)", min=10, max=50, step=1, default=25.0),
@@ -43,7 +43,7 @@ LENGTH = 375.0              # owner: must fit the space exactly
 WIDTH = 125.0               # owner: must fit the space exactly
 BED = 256.0                 # /printer bed, extruder 1
 BED_Z = 261.0
-FLOOR = 1.6                 # 8 layers at 0.2
+FLOOR = 1.2                 # 6 layers at 0.2: all solid top and bottom layers, no infill
 DIVIDER = 1.68              # 4 lines at 0.42
 LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured)
 HOLE_SHRINK = 0.15
@@ -74,7 +74,6 @@ SEAT_FLOOR = 1.5           # solid plastic under the deepest pilot hole
 CORNER_R = 8.0             # outside vertical corners
 CELL_R = 4.0               # inside vertical corners at dividers and the seam
 FLOOR_FILLET = 3.0         # floor-to-wall round inside each compartment
-RIM_R = 1.05               # half the wall: a fully rounded rim
 HANDLE_TOP = 12.0          # rim to the top of the hand hole
 BAND = 3.0                 # thicker wall around the hand hole: only enough to round its edges, the box is ~1 kg
 BAND_T = 1.0
@@ -183,9 +182,10 @@ def rounded_box_section(x0, x1, y0, y1, radii):
     return mf.CrossSection.batch_hull(discs)
 
 
-def rim_round(z, H):
+def rim_round(z, H, wall):
     """How far the rounded rim pulls a wall face in (outside) or out (inside) at height z."""
-    return round_inset(RIM_R, H - z) if z > H - RIM_R else 0.0
+    radius = wall / 2   # fully rounded rim
+    return round_inset(radius, H - z) if z > H - radius else 0.0
 
 
 def inner_inset(z, H, wall):
@@ -198,7 +198,7 @@ def inner_inset(z, H, wall):
         inset = nest + wall - (z - z_step)
     else:
         inset = wall
-    return inset - rim_round(min(z, H), H)
+    return inset - rim_round(min(z, H), H, wall)
 
 
 def shell_solid(H, wall):
@@ -213,7 +213,7 @@ def shell_solid(H, wall):
 
     foot = mf.Manifold.batch_hull([outline(nest, 0.0), outline(nest, NEST_H - 0.01)])
     upper = [outline(nest, NEST_H - 0.01), outline(0.0, NEST_H + nest)]
-    upper += [outline(rim_round(z, H), min(z, H - 0.01)) for z in (H - RIM_R + RIM_R * i / 8 for i in range(9))]
+    upper += [outline(rim_round(z, H, wall), min(z, H - 0.01)) for z in (H - wall / 2 * (1 - i / 8) for i in range(9))]
     return foot + mf.Manifold.batch_hull(upper)
 
 
@@ -224,7 +224,7 @@ def cell_pocket(x0, x1, y0, y1, z0, z1, H, wall, floor_fillet=True):
     """
     z_step = NEST_H + wall * (math.sqrt(2) - 1)
     zs = {z0, z1, z_step, z_step + wall + LOOSE}
-    zs |= {H - RIM_R + RIM_R * i / 8 for i in range(9)}
+    zs |= {H - wall / 2 * (1 - i / 8) for i in range(9)}
     if floor_fillet:
         zs |= {z0 + FLOOR_FILLET * (1 - math.cos(i / 6 * math.pi / 2)) for i in range(7)}
     layers = []

@@ -105,10 +105,9 @@ def with_stock_presets(settings_text):
     return json.dumps(settings, indent=4)
 
 
-# Changes from stock 0.20mm Standard, strength first: solid walls, a thick solid ring around every screw hole,
-# and 40% gyroid (strong in every direction) in the few thick parts. Gains above ~50% infill are small.
-PRINT_OVERRIDES = {"wall_loops": "4", "wall_generator": "arachne",
-                   "sparse_infill_density": "40%", "sparse_infill_pattern": "gyroid"}
+# Changes from stock 0.20mm Standard: 4 wall loops put a solid ring of plastic around every screw hole, and
+# arachne lays thin walls as even lines. Infill stays stock: only the connectors are thick enough to get any.
+PRINT_OVERRIDES = {"wall_loops": "4", "wall_generator": "arachne"}
 
 
 def with_print_overrides(settings_text):
