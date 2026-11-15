@@ -59,7 +59,8 @@ PILOT_WALL = 1.2            # plastic kept around the pilot hole where the boss 
 SMOOTH_LAYERS = 16
 CLIP_WALL = 2.6            # clip leg thickness
 CLIP_ROUND = 1.2
-HEAD_SINK = 1.2            # top screw heads sit this far below the surface, in a round pocket
+HEAD_CLEAR = 0.3           # head pocket depth beyond the head height, so a typical head sits about flush
+POCKET_FLOOR = 1.2         # tab plastic left under the far edge of a top head pocket
 POST_LEN = 11.0            # seam posts the clip screws bite into, against each long wall
 POST_W = 8.0               # half-A post, measured from the seam wall into section 1
 EAR_MARGIN = 1.6           # clip plastic around the screw-head recess on each end tab
@@ -68,7 +69,6 @@ EAR_MARGIN = 1.6           # clip plastic around the screw-head recess on each e
 OVERLAP_REACH = 13.6       # how far each tab reaches over half B
 OVERLAP_TIP = 2.0          # tab thickness at its tip
 OVERLAP_W = 12.0           # tab width along the seam
-OVERLAP_SCREW_X = 6.0      # screw distance from the seam face
 OVERLAP_POST_MARGIN = 1.5  # half B's seat reaches this much past the tab on each side
 SEAT_FLOOR = 1.5           # solid plastic under the deepest pilot hole
 CORNER_R = 8.0             # outside vertical corners
@@ -83,8 +83,9 @@ LOW_DIVIDER_GAP = 3.0      # section 3a/3b divider top sits this far below the h
 MIN_SECTION = 15.0
 SEG = 48
 # One screw everywhere: 3 mm self-tapping, 12 or 13 mm long (ST2.9: pan ISO 7049, flat ISO 7050, or round/truss).
-# The flat-bottomed head recess takes any of those heads up to 7 x 3 mm; a flat head seats on the hole's edge.
-SCREW = dict(screw_d=2.9, screw_len=12.0, head_d=7.0, head_h=3.0, pilot_d=2.4)
+# The flat-bottomed head pocket takes any of those heads up to 7 mm wide; pan heads (2.2 mm) sit about flush,
+# lower round and flat heads sit a little below, and a flat head seats on the hole's edge.
+SCREW = dict(screw_d=2.9, screw_len=12.0, head_d=7.0, head_h=2.2, pilot_d=2.4)
 LONGEST_SCREW = 13.0       # pilot holes are deep enough for the 13 mm ISO length too
 
 COLOR_A = (0.30, 0.47, 0.66)      # blue
@@ -320,7 +321,7 @@ def layout(p):
     seam_after, seam = pick_seam(p)
     inner_w = WIDTH - 2 * wall
     section_3 = LENGTH - 4 * wall - DIVIDER - p["section_1"] - p["section_2"]
-    counterbore_depth = p["head_h"] + 0.5
+    counterbore_depth = p["head_h"] + HEAD_CLEAR
     tab_h = counterbore_depth + UNDER_HEAD
     bite = p["screw_len"] - UNDER_HEAD - LOOSE          # thread length inside half B's boss
     pilot_top = tab_h + LOOSE + (LONGEST_SCREW - UNDER_HEAD - LOOSE) + 0.5
@@ -451,7 +452,7 @@ def parts(p):
         clip, clip_top = None, seam_top
     else:
         # Top clip: rounded U over both seam walls, screwed down into a post at each end of the seam.
-        clip_pad = UNDER_HEAD + p["head_h"] + 0.3 + HEAD_SINK
+        clip_pad = UNDER_HEAD + p["head_h"] + HEAD_CLEAR
         clip_top = seam_top + clip_pad
         gap = p["clip_gap"]
         outer = wall + gap + CLIP_WALL
@@ -507,7 +508,7 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
     x1 = LA + OVERLAP_REACH
     z_low = top - OVERLAP_TIP - OVERLAP_REACH
     profile = mf.CrossSection([[(LA - 0.01, z_low), (x1, top - OVERLAP_TIP), (x1, top), (LA - 0.01, top)]])
-    recess = HEAD_SINK + 0.3 + p["head_h"]
+    recess = p["head_h"] + HEAD_CLEAR
     head_bottom = top - recess
     screws = []
     for ys in (wall + 1 + OVERLAP_W / 2, W / 2, W - wall - 1 - OVERLAP_W / 2):
@@ -535,7 +536,7 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
         a += tab ^ shell
         b += seat ^ shell_b
         b -= room
-        xs = LA + OVERLAP_SCREW_X
+        xs = LA + overlap_screw_x(p, counterbore_d)
         a -= cyl_z(xs, ys, z_low - 1, top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
         a -= cyl_z(xs, ys, head_bottom, top + 1, counterbore_d)
         b -= cyl_z(xs, ys, head_bottom - LONGEST_SCREW - 0.5, top, p["pilot_d"] + HOLE_SHRINK)
@@ -544,10 +545,18 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
     return a, b, screws
 
 
-def overlap_bite(p, top):
-    """Thread length of a top screw inside half B's post."""
-    under_head = (top - HEAD_SINK - 0.3 - p["head_h"]) - (top - OVERLAP_TIP - (OVERLAP_REACH - OVERLAP_SCREW_X))
-    return p["screw_len"] - under_head - LOOSE * math.sqrt(2)
+def overlap_screw_x(p, counterbore_d):
+    """Screw distance from the seam: as far out on the tab as its head pocket allows, where the 45° tab is thinnest,
+    so less of the screw is spent in half A and more bites into half B."""
+    recess = p["head_h"] + HEAD_CLEAR
+    return OVERLAP_TIP + OVERLAP_REACH - (recess + POCKET_FLOOR + counterbore_d / 2)
+
+
+def overlap_bite(p):
+    """Thread length of a top screw inside half B's seat."""
+    counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
+    tab_under_head = OVERLAP_TIP + OVERLAP_REACH - overlap_screw_x(p, counterbore_d) - (p["head_h"] + HEAD_CLEAR)
+    return p["screw_len"] - tab_under_head - LOOSE * math.sqrt(2)
 
 
 def build(**p):
@@ -609,7 +618,7 @@ def stats(p: dict[str, float]) -> dict[str, str]:
         "outer size": f"{L:.0f} x {W:.0f} x {H:.0f} mm",
         "hardware": (f"{2 + top_count}x 3 mm self-tapping (ST{p['screw_d']:g}) x 12-13 mm, pan, flat or round head: "
                      f"2 floor, {top_count} top" + ("" if overlap else "; 1 clip")),
-        "top screw bite": (f"{overlap_bite(p, H - DIVIDER_DROP):.1f} mm into half B's posts" if overlap
+        "top screw bite": (f"{overlap_bite(p):.1f} mm into half B's posts" if overlap
                            else f"{p['screw_len'] - UNDER_HEAD:.1f} mm into half A's posts"),
-        "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head recess {p['head_d'] + 2 * LOOSE:.1f} mm",
+        "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head pocket {p['head_d'] + 2 * LOOSE:.1f} mm wide x {p['head_h'] + HEAD_CLEAR:.1f} mm deep",
     }
