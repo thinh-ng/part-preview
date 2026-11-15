@@ -1,11 +1,12 @@
 """Export the dog storage box as one Bambu Studio 3MF with two plates, from a part-preview server's saved values.
 
-Plate 1 is a seam test strip (print it first), plate 2 is the whole box. The file layout copies what
+Plate 1 is a seam test strip (print it first), plate 2 is half A with the clip and caps, plate 3 is half B. The file layout copies what
 Bambu Studio itself writes (wrapper objects, one mesh file per part, plates in model_settings.config).
 
 Needs numpy, manifold3d and trimesh:  python scripts/export_dog_storage_box.py [server URL]
 """
 import json
+import math
 import sys
 import urllib.request
 import zipfile
@@ -22,9 +23,8 @@ import model  # noqa: E402
 OUT = HERE.parent / "prints" / "dog-storage-box" / "dog-storage-box.3mf"
 SERVER = sys.argv[1] if len(sys.argv) > 1 else "http://pi4.local:8765"
 BED = 256.0
-PLATE_STRIDE = BED * 1.2      # Bambu Studio puts plate n+1 this far to the right of plate n
-EDGE = 1.5                    # distance from the plate edge
-GAP = 3.0                     # between parts on a plate
+PLATE_STRIDE = BED * 1.2      # Bambu Studio's spacing between neighbouring plates, in x and in y
+GAP = 5.0                     # between parts on a plate
 
 values = json.load(urllib.request.urlopen(f"{SERVER}/api/schema?model=dog_storage_box", timeout=10))["values"]
 a, b, clip, _screws, caps, _info = model.parts(dict(values))
@@ -42,28 +42,31 @@ def mesh_of(shape, flip=False):
     return mesh
 
 
-def row(parts, y0, x0=EDGE):
-    """Lay parts left to right starting at (x0, y0); returns [(name, mesh, centre_x, centre_y)]."""
-    placed, x = [], x0
+def row(parts):
+    """Lay parts left to right, the whole row centred on the plate; returns [(name, mesh, centre_x, centre_y)]."""
+    width = sum(m.extents[0] for _, m in parts) + GAP * (len(parts) - 1)
+    depth = max(m.extents[1] for _, m in parts)
+    assert width <= BED - 10 and depth <= BED - 10, f"{width:.0f} x {depth:.0f} mm does not fit the plate"
+    placed, x = [], (BED - width) / 2
     for name, mesh in parts:
-        w, d = mesh.extents[:2]
-        placed.append((name, mesh, x + w / 2, y0 + d / 2))
-        x += w + GAP
-    assert x - GAP <= BED - EDGE + 1e-6, f"row too wide: {x - GAP:.1f} mm"
+        placed.append((name, mesh, x + mesh.extents[0] / 2, BED / 2))
+        x += mesh.extents[0] + GAP
     return placed
 
 
 caps_mesh = [mesh_of(c) for c in caps]
-test = row([("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam, -1, model.WIDTH + 1, -1, 300))),
-            ("seam test half B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
-            ("top clip (test)", mesh_of(clip, flip=True)),
-            ("screw cap (test) 1", caps_mesh[0]), ("screw cap (test) 2", caps_mesh[1].copy())], EDGE)
-half_b = mesh_of(b)
-box = row([("half B", half_b)], EDGE)
-box += row([("half A", mesh_of(a)), ("top clip", mesh_of(clip, flip=True)),
-            ("screw cap 1", caps_mesh[0].copy()), ("screw cap 2", caps_mesh[1].copy())], EDGE + half_b.extents[1] + GAP)
-assert max(cy + m.extents[1] / 2 for _, m, _, cy in box) <= BED - EDGE + 1e-6, "box does not fit one plate"
-plates = [("Seam test - print first", test), ("Dog storage box", box)]
+plates = [
+    ("Seam test - print first", row([
+        ("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam, -1, model.WIDTH + 1, -1, 300))),
+        ("seam test half B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
+        ("top clip (test)", mesh_of(clip, flip=True)),
+        ("screw cap (test) 1", caps_mesh[0]), ("screw cap (test) 2", caps_mesh[1].copy())])),
+    ("Half A + clip + caps", row([
+        ("half A", mesh_of(a)), ("top clip", mesh_of(clip, flip=True)),
+        ("screw cap 1", caps_mesh[0].copy()), ("screw cap 2", caps_mesh[1].copy())])),
+    ("Half B", row([("half B", mesh_of(b))])),
+]
+COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
 
 files, items, rels, objects_cfg, plates_cfg = {}, [], [], [], []
 next_id = 1
@@ -81,7 +84,8 @@ for plate_index, (plate_name, parts) in enumerate(plates):
                        f'<triangles>{triangles}</triangles></mesh></object></resources><build/></model>')
         rels.append(f'<Relationship Target="/{path}" Id="rel-{len(rels) + 1}" '
                     'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>')
-        items.append((wrapper_id, mesh_id, path, cx + plate_index * PLATE_STRIDE, cy))
+        col, plate_row = plate_index % COLUMNS, plate_index // COLUMNS
+        items.append((wrapper_id, mesh_id, path, cx + col * PLATE_STRIDE, cy - plate_row * PLATE_STRIDE))
         label = escape(name, {'"': "&quot;"})
         objects_cfg.append(f'<object id="{wrapper_id}"><metadata key="name" value="{label}"/>'
                            '<metadata key="extruder" value="1"/>'
@@ -107,6 +111,12 @@ main = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                   for w, _, _, x, y in items)
         + "</build></model>")
 files["3D/3dmodel.model"] = main
+# Bambu Studio rejects a Bambu-tagged 3MF without its project settings ("invalid config"); these come from an
+# X2D project saved by Bambu Studio 02.08 (0.20mm Standard, Generic PLA).
+for name in ("project_settings.config", "slice_info.config"):
+    files[f"Metadata/{name}"] = (HERE / f"bambu-x2d-{name}").read_text(encoding="utf-8")
+files["Metadata/filament_sequence.json"] = json.dumps(
+    {f"plate_{i + 1}": {"nozzle_sequence": [], "optimal_assignment": [], "sequence": []} for i in range(len(plates))})
 files["3D/_rels/3dmodel.model.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships '
                                          'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                                          + "".join(rels) + "</Relationships>")
