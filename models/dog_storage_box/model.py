@@ -1,9 +1,11 @@
 """Dog storage box, printed as two halves that fit a 256 mm bed.
 
-Half A holds section 1; half B holds section 2 and section 3 (split in two). Half A's floor tabs
-slide under half B and self-tapping screws go up from below into blind holes in two bosses.
-A U clip pushed over the double seam wall keeps the top together. Clearances are
-tolerances.json starting values, not yet measured on the printer.
+The halves join on the wall after section 1 or 2, whichever fits the bed. Half A's floor tabs
+slide under half B and M2.5 machine screws go up from below into a raised floor or two bosses.
+A rounded U clip over the double seam wall is screwed down into two posts at the seam's ends,
+with printed caps hiding the screw heads. Each compartment is cut as its own rounded pocket, so
+every inside corner is filleted. Clearances are tolerances.json starting values, not yet
+measured on the printer.
 """
 
 from __future__ import annotations
@@ -18,7 +20,6 @@ PARAMS = [
     dict(key="height", label="Height (mm)", min=40, max=250, step=1, default=100.0),
     dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=183.0),
     dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=105.0),
-    dict(key="section_3a", label="Section 3a width (mm); 3b gets the rest", min=15, max=230, step=0.5, default=59.5),
     dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=2.1),
     dict(key="tab_len", label="Floor tab reach under B (mm)", min=8, max=30, step=0.5, default=10.0),
     dict(key="tab_w", label="Floor tab width (mm)", min=8, max=24, step=0.5, default=10.0),
@@ -27,16 +28,13 @@ PARAMS = [
          options=["Two round bumps", "Raised floor sloping away"]),
     dict(key="ramp_len", label="Raised floor slope length (mm): longer is gentler; runs under dividers, capped at half B's end", min=10, max=300, step=1, default=120.0),
     dict(key="boss_smooth", label="Round bump smoothness (mm)", min=0.5, max=6, step=0.25, default=4.0),
-    dict(key="pattern", label="Wall pattern", min=0, max=4, step=1, default=1,
-         options=["Solid", "Hexagon", "Vertical slots", "Diamond", "Round"]),
-    dict(key="hole_size", label="Pattern hole size (mm)", min=4, max=40, step=0.5, default=12.0),
-    dict(key="bar", label="Pattern bar width between holes (mm)", min=1.5, max=10, step=0.1, default=3.0),
-    dict(key="border", label="Solid border around patterns (mm)", min=3, max=25, step=0.5, default=8.0),
+    dict(key="hand_w", label="Hand hole width (mm)", min=40, max=105, step=1, default=65.0),
+    dict(key="hand_h", label="Hand hole height (mm)", min=10, max=45, step=1, default=15.0),
     dict(key="clip_leg", label="Top clip reach down (mm)", min=4, max=20, step=0.5, default=8.0),
     dict(key="clip_gap", label="Top clip gap per side (mm)", min=0.0, max=0.4, step=0.05, default=0.10),
     dict(key="explode", label="Explode view (mm)", min=0, max=80, step=1, default=0.0),
-    dict(key="show", label="Show", min=0, max=3, step=1, default=0,
-         options=["Whole box", "Half A only", "Half B only", "Top clip only"]),
+    dict(key="show", label="Show", min=0, max=4, step=1, default=0,
+         options=["Whole box", "Half A only", "Half B only", "Top clip only", "Screw caps only"]),
 ]
 
 LENGTH = 375.0              # owner: must fit the space exactly
@@ -49,21 +47,38 @@ LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured)
 HOLE_SHRINK = 0.15
 NEST_H = 4.0                # stacking step for future boxes
 DIVIDER_DROP = 5.0
-SEAM_DROP = 8.0             # seam walls stop this far below the rim, room for the clip
+SEAM_DROP = 10.5            # seam walls stop this far below the rim: room for the screwed clip under a stacked box
 UNDER_HEAD = 1.5            # tab plastic the screw head clamps
 BOSS_MARGIN = 1.68          # 4 lines of plastic around the tab pocket
 BOSS_CAP = 1.2              # closed top over the pilot hole, so nothing shows inside
 PILOT_WALL = 1.2            # plastic kept around the pilot hole where the boss top is rounded
 SMOOTH_LAYERS = 16
-CLIP_WALL, CLIP_TOP = 1.6, 1.6
+CLIP_WALL = 2.6            # leaves a flat top wide enough for the screw cap after rounding
+CLIP_ROUND = 1.2
+CAP_H = 1.2                # printed cap pressed over each clip screw head
+POST_LEN = 11.0            # seam posts the clip screws bite into, against each long wall
+POST_HALF = 3.0            # post reaches this far either side of the seam
+PILOT_DEPTH = 7.0
+CORNER_R = 8.0             # outside vertical corners
+CELL_R = 4.0               # inside vertical corners at dividers and the seam
+FLOOR_FILLET = 3.0         # floor-to-wall round inside each compartment
+RIM_R = 1.05               # half the wall: a fully rounded rim
+HANDLE_TOP = 12.0          # rim to the top of the hand hole
+BAND = 3.0                 # thicker wall around the hand hole: only enough to round its edges, the box is ~1 kg
+BAND_T = 1.0
+HOLE_EDGE_R = 1.5
+LOW_DIVIDER_GAP = 3.0      # section 3a/3b divider top sits this far below the hand-hole band
 MIN_SECTION = 15.0
 SEG = 48
-# Self-tapping screw, starting sizes for a common M3 x 8 pan head (owner's screw not yet measured)
-SCREW = dict(screw_d=3.0, screw_len=8.0, head_d=5.7, head_h=2.4, pilot_d=2.5)
+# Owner's screws: M2.5 x 8 machine screws, cutting their own thread in the pilot hole.
+# Head size not measured yet; the recess is sized for heads up to 5.7 x 2.4 (covers M2.5 socket and pan heads).
+SCREW = dict(screw_d=2.5, screw_len=8.0, head_d=5.7, head_h=2.4, pilot_d=2.1)
+PRY_NOTCH_W, PRY_NOTCH_L = 2.5, 4.0   # sloped notch: a screwdriver tip slides down it and under the cap edge
 COLOR_A = (0.30, 0.47, 0.66)      # blue
 COLOR_B = (0.96, 0.52, 0.09)      # orange
 COLOR_CLIP = (0.33, 0.64, 0.29)   # green
 COLOR_SCREW = (0.15, 0.15, 0.15)
+COLOR_CAP = (0.20, 0.45, 0.20)
 
 
 def cube(x0, x1, y0, y1, z0, z1):
@@ -131,90 +146,120 @@ def floor_ramp(x0, flat, ramp, top, y0, y1):
     return mf.CrossSection([outline]).extrude(y1 - y0).rotate([90, 0, 0]).translate([0, y1, 0])
 
 
-def stepped(L, W, inset_low, inset_high, z0, z_step, rise, z_top):
-    """Block whose bottom part is inset, widening at 45° to the full size."""
-    def slab(inset, za, zb):
-        return cube(inset, L - inset, inset, W - inset, za, zb)
-    thin = 0.01
-    ramp = mf.Manifold.batch_hull([slab(inset_low, z_step, z_step + thin), slab(inset_high, z_step + rise - thin, z_step + rise)])
-    return slab(inset_low, z0, z_step) + ramp + slab(inset_high, z_step + rise, z_top)
+def layer(section, z, thick=0.01):
+    return section.extrude(thick).translate([0, 0, z])
 
 
-def pattern_holes(kind, size, bar, u0, u1, v0, v1):
-    """Holes of one pattern, centred in the panel u0..u1 x v0..v1, each fully inside it.
+def rounded_box_section(x0, x1, y0, y1, radii):
+    """Rectangle with its own radius at each corner (x0y0, x1y0, x1y1, x0y1); convex."""
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    discs = []
+    for (cx, cy), r in zip(corners, radii):
+        r = max(min(r, (x1 - x0) / 2 - 0.01, (y1 - y0) / 2 - 0.01), 0.05)
+        sx = r if cx == x0 else -r
+        sy = r if cy == y0 else -r
+        discs.append(mf.CrossSection.circle(r, SEG).translate([cx + sx, cy + sy]))
+    return mf.CrossSection.batch_hull(discs)
 
-    Every hole's top is pointed at 45° or steeper so the wall prints upright without support.
+
+def rim_round(z, H):
+    """How far the rounded rim pulls a wall face in (outside) or out (inside) at height z."""
+    return round_inset(RIM_R, H - z) if z > H - RIM_R else 0.0
+
+
+def inner_inset(z, H, wall):
+    """Distance of the inside wall face from the outside of the box at height z (stacking foot, rim)."""
+    nest = wall + LOOSE
+    z_step = NEST_H + wall * (math.sqrt(2) - 1)
+    if z <= z_step:
+        inset = nest + wall
+    elif z <= z_step + nest:
+        inset = nest + wall - (z - z_step)
+    else:
+        inset = wall
+    return inset - rim_round(min(z, H), H)
+
+
+def shell_solid(H, wall):
+    """Outside of the box: stacking foot, 45° step, straight walls, rounded rim; rounded corners.
+
+    The foot and the rest are hulled separately: one hull would turn the foot's vertical step into a slope.
     """
-    if u1 - u0 < size or v1 - v0 < size:
-        return None
-    r = size / 2
-    if kind == 1:      # hexagon, point up
-        shape = mf.CrossSection.circle(r, 6).rotate(90)
-        half_w, down, up = r * math.sqrt(3) / 2, r, r
-        pitch_u = 2 * half_w + bar
-        pitch_v, stagger = pitch_u * math.sqrt(3) / 2, True
-    elif kind == 2:    # vertical slot over the full panel height, pointed top
-        h = v1 - v0
-        shape = mf.CrossSection([[(-r, -h / 2), (r, -h / 2), (r, h / 2 - r), (0, h / 2), (-r, h / 2 - r)]])
-        half_w, down, up = r, h / 2, h / 2
-        pitch_u, pitch_v, stagger = size + bar, h + 1, False
-    elif kind == 3:    # diamond lattice
-        shape = mf.CrossSection([[(0, -r), (r, 0), (0, r), (-r, 0)]])
-        half_w, down, up = r, r, r
-        pitch_u = size + bar * math.sqrt(2)
-        pitch_v, stagger = pitch_u / 2, True
-    else:              # round, with a 45° point on top
-        tip = mf.CrossSection.square([0.01, 0.01], center=True).translate([0, r * math.sqrt(2)])
-        shape = mf.CrossSection.batch_hull([mf.CrossSection.circle(r, SEG), tip])
-        half_w, down, up = r, r, r * math.sqrt(2)
-        pitch_u = size + bar
-        pitch_v, stagger = pitch_u * math.sqrt(3) / 2, True
-    uc, vc = (u0 + u1) / 2, (v0 + v1) / 2 + (down - up) / 2
-    rows = int((v1 - v0) / pitch_v) + 2
-    cols = int((u1 - u0) / pitch_u) + 2
-    holes = []
-    for j in range(-rows, rows + 1):
-        v = vc + j * pitch_v
-        shift = pitch_u / 2 if stagger and j % 2 else 0.0
-        for i in range(-cols, cols + 1):
-            u = uc + i * pitch_u + shift
-            if u - half_w >= u0 and u + half_w <= u1 and v - down >= v0 and v + up <= v1:
-                holes.append(shape.translate([u, v]))
-    return mf.CrossSection.compose(holes) if holes else None
+    nest = wall + LOOSE
+
+    def outline(inset, z):
+        return layer(rounded_box_section(inset, LENGTH - inset, inset, WIDTH - inset, [CORNER_R - inset] * 4), z)
+
+    foot = mf.Manifold.batch_hull([outline(nest, 0.0), outline(nest, NEST_H - 0.01)])
+    upper = [outline(nest, NEST_H - 0.01), outline(0.0, NEST_H + nest)]
+    upper += [outline(rim_round(z, H), min(z, H - 0.01)) for z in (H - RIM_R + RIM_R * i / 8 for i in range(9))]
+    return foot + mf.Manifold.batch_hull(upper)
 
 
-def panels(bands, lo, hi, border):
-    """Gaps between solid bands (wall junctions) along one wall, shrunk by the border."""
-    edges = sorted(bands)
-    out = []
-    for (_, end), (start, _) in zip(edges, edges[1:]):
-        if start - end - 2 * border > 0:
-            out.append((end + border, start - border))
-    return [(u0, u1) for u0, u1 in out if lo <= u0 and u1 <= hi]
+def cell_pocket(x0, x1, y0, y1, z0, z1, H, wall, floor_fillet=True):
+    """One compartment's air. "wall" for a side means the outer wall; numbers are divider faces.
+
+    Built from horizontal layers, so its floor edges and all four vertical corners are rounded.
+    """
+    z_step = NEST_H + wall * (math.sqrt(2) - 1)
+    zs = {z0, z1, z_step, z_step + wall + LOOSE}
+    zs |= {H - RIM_R + RIM_R * i / 8 for i in range(9)}
+    if floor_fillet:
+        zs |= {z0 + FLOOR_FILLET * (1 - math.cos(i / 6 * math.pi / 2)) for i in range(7)}
+    layers = []
+    for z in sorted(z for z in zs if z0 <= z <= z1):
+        inset = inner_inset(z, H, wall)
+        f = 0.0
+        if floor_fillet and z - z0 < FLOOR_FILLET:
+            f = FLOOR_FILLET - math.sqrt(max(FLOOR_FILLET ** 2 - (FLOOR_FILLET - (z - z0)) ** 2, 0.0))
+        sides = [inset if x0 == "wall" else x0, LENGTH - inset if x1 == "wall" else x1,
+                 inset if y0 == "wall" else y0, WIDTH - inset if y1 == "wall" else y1]
+        on_wall = [x0 == "wall", x1 == "wall", y0 == "wall", y1 == "wall"]
+        radii = [(CORNER_R - inset if on_wall[xi] and on_wall[yi] else CELL_R) - f
+                 for xi, yi in ((0, 2), (1, 2), (1, 3), (0, 3))]
+        section = rounded_box_section(sides[0] + f, sides[1] - f, sides[2] + f, sides[3] - f, radii)
+        layers.append(layer(section, z if z < z1 else z1 - 0.01))
+    return mf.Manifold.batch_hull(layers)
 
 
-def wall_cutter(p, wall, H, x_bands, y_bands_end):
-    """Pattern cutouts through the four outer walls, solid near every junction, rim and stacking step."""
-    if p["pattern"] < 0.5:
-        return None
-    kind, size, bar, border = int(round(p["pattern"])), p["hole_size"], p["bar"], p["border"]
-    v0, v1 = NEST_H + wall + LOOSE + border, H - border
-    depth = wall + 0.55
-    cutters = []
-    for u0, u1 in panels(x_bands, 0, LENGTH, border):          # long walls, u along x
-        holes = pattern_holes(kind, size, bar, u0, u1, v0, v1)
-        if holes is None:
-            continue
-        slab = holes.extrude(depth).rotate([90, 0, 0])            # (u, v, w) -> (u, -w, v)
-        cutters += [slab.translate([0, wall + 0.05, 0]), slab.translate([0, WIDTH + 0.5, 0])]
-    for x_end, y_bands in y_bands_end:                            # end walls, u along y
-        for u0, u1 in panels(y_bands, 0, WIDTH, border):
-            holes = pattern_holes(kind, size, bar, u0, u1, v0, v1)
-            if holes is None:
-                continue
-            slab = holes.extrude(depth).rotate([90, 0, 0]).rotate([0, 0, 90])   # -> (w, u, v)
-            cutters.append(slab.translate([x_end, 0, 0]))
-    return mf.Manifold.batch_boolean(cutters, mf.OpType.Add) if cutters else None
+def stadium(u_center, v_center, width, height, grow=0.0):
+    r = height / 2 + grow
+    half = width / 2 - height / 2
+    return mf.CrossSection.batch_hull([mf.CrossSection.circle(r, SEG).translate([u_center - half, v_center]),
+                                       mf.CrossSection.circle(r, SEG).translate([u_center + half, v_center])])
+
+
+def along_x(section, x0, x1):
+    """Extrude a (y, z) section along x from x0 to x1."""
+    return section.extrude(x1 - x0).rotate([90, 0, 0]).rotate([0, 0, 90]).translate([x0, 0, 0])
+
+
+def hand_hole(p, H, wall, at_start):
+    """Stadium hole through one end wall with rounded edges on both faces, and the band around it."""
+    zc = H - HANDLE_TOP - p["hand_h"] / 2
+    yc = WIDTH / 2
+    face_in = wall + BAND_T
+
+    def slab(grow, d0, d1):
+        """Stadium grown by `grow`, from d0 to d1 mm in from this end wall."""
+        a, b = (d0, d1) if at_start else (LENGTH - d1, LENGTH - d0)
+        return along_x(stadium(yc, zc, p["hand_w"], p["hand_h"], grow), a, b)
+
+    band_round = min(HOLE_EDGE_R, BAND_T * 0.8)
+    band = mf.Manifold.batch_hull([slab(BAND, -0.5, face_in - band_round),
+                                   slab(BAND - band_round, face_in - 0.01, face_in)])
+    cutter = slab(0, -1, face_in + 1)
+    steps = 8
+    for face, inward in ((0.0, 1), (face_in, -1)):
+        for i in range(steps):
+            a0, a1 = i / steps * math.pi / 2, (i + 1) / steps * math.pi / 2
+            g0, g1 = HOLE_EDGE_R * (1 - math.sin(a0)), HOLE_EDGE_R * (1 - math.sin(a1))
+            d0 = face + inward * HOLE_EDGE_R * (1 - math.cos(a0))
+            d1 = face + inward * HOLE_EDGE_R * (1 - math.cos(a1))
+            cutter += mf.Manifold.batch_hull([slab(g0, d0 - 0.005, d0 + 0.005), slab(g1, d1 - 0.005, d1 + 0.005)])
+        outside = (face - 1.0, face + 0.005) if inward == 1 else (face - 0.005, face + 1.0)
+        cutter += slab(HOLE_EDGE_R, *outside)
+    return band, cutter, zc
 
 
 def ramp_length(p, k):
@@ -254,7 +299,9 @@ def layout(p):
     tab_h = counterbore_depth + UNDER_HEAD
     bite = p["screw_len"] - UNDER_HEAD - LOOSE          # thread length inside half B's boss
     pilot_top = tab_h + LOOSE + bite + 0.5
-    return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3b=inner_w - DIVIDER - p["section_3a"],
+    hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
+    return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
+                low_divider=hand_bottom - LOW_DIVIDER_GAP,
                 counterbore_depth=counterbore_depth, tab_h=tab_h, bite=bite, pilot_top=pilot_top,
                 boss_h=pilot_top + BOSS_CAP, boss_w=p["tab_w"] + 2 * (LOOSE + BOSS_MARGIN))
 
@@ -273,8 +320,6 @@ def parts(p):
     LA = k["seam"]
     if k["section_3"] < MIN_SECTION:
         raise ValueError(f"sections 1 + 2 are too long: section 3 would be {k['section_3']:.0f} mm")
-    if k["section_3b"] < MIN_SECTION:
-        raise ValueError(f"section 3a is too wide: 3b would be {k['section_3b']:.0f} mm")
     if tab_w < counterbore_d + 2 * 1.2:
         raise ValueError(f"tab is narrower than the screw head needs: at least {counterbore_d + 2.4:.1f} mm")
     if tab_len < tab_w:
@@ -283,44 +328,73 @@ def parts(p):
         raise ValueError("floor tabs run into the long walls: raise 'tabs in from long sides'")
     if W - 2 * tab_inset < k["boss_w"]:
         raise ValueError("floor tabs overlap: lower 'tabs in from long sides'")
-    if p["pilot_d"] >= p["screw_d"]:
-        raise ValueError("pilot hole must be smaller than the screw thread, or the screw has nothing to bite")
+    if p["hand_w"] + 2 * HOLE_EDGE_R > W - 2 * CORNER_R:
+        raise ValueError("hand hole is wider than the flat part of the end wall")
+    if k["low_divider"] < 20:
+        raise ValueError("box is too low for the hand holes: raise the height or make the hole shorter")
     raised = p["floor_style"] >= 0.5
     ramp_len = ramp_length(p, k)
     if raised and ramp_len < 10:
         raise ValueError("half B is too short for the raised floor: use the round bumps")
-    if k["boss_h"] > H - DIVIDER_DROP:
+    if k["boss_h"] > k["low_divider"]:
         raise ValueError("screw is too long for this box height")
 
-    nest_inset = wall + LOOSE
     seam_top = H - SEAM_DROP
-    shell = stepped(L, W, nest_inset, 0, 0, NEST_H, nest_inset, H)
-    pocket = stepped(L, W, nest_inset + wall, wall, FLOOR, NEST_H + wall * (math.sqrt(2) - 1), nest_inset, H + 1)
+    z_div = H - DIVIDER_DROP - DIVIDER / 2
+    z_low = k["low_divider"] - DIVIDER / 2
+    shell = shell_solid(H, wall)
     shell_a = shell ^ cube(-1, LA, -1, W + 1, -1, H + 1)
     shell_b = shell ^ cube(LA, L + 1, -1, W + 1, -1, H + 1)
-    a = shell_a - (pocket ^ cube(-1, LA - wall, -1, W + 1, -1, H + 2))
-    b = shell_b - (pocket ^ cube(LA + wall, L + 1, -1, W + 1, -1, H + 2))
-    seam_cut = cube(LA - wall, LA + wall, wall, W - wall, seam_top, H + 1)
+
+    # Compartments, each its own rounded pocket; dividers are the plastic left between them.
+    y_mid0, y_mid1 = W / 2 - DIVIDER / 2, W / 2 + DIVIDER / 2
+    if k["seam_after"] == 1:
+        divider_x = LA + wall + p["section_2"]
+        cells_a = [("wall", LA - wall)]
+        cells_b = [(LA + wall, divider_x)]
+    else:
+        divider_x = wall + p["section_1"]
+        cells_a = [("wall", divider_x), (divider_x + DIVIDER, LA - wall)]
+        cells_b = []
+    s3_x0 = divider_x + DIVIDER if k["seam_after"] == 1 else LA + wall
+    air_a = [cell_pocket(x0, x1, "wall", "wall", FLOOR, z_div, H, wall) for x0, x1 in cells_a]
+    air_b = [cell_pocket(x0, x1, "wall", "wall", FLOOR, z_div, H, wall) for x0, x1 in cells_b]
+    air_b += [cell_pocket(s3_x0, "wall", "wall", y_mid0, FLOOR, z_low, H, wall),
+              cell_pocket(s3_x0, "wall", y_mid1, "wall", FLOOR, z_low, H, wall),
+              cell_pocket(s3_x0, "wall", "wall", "wall", z_low, z_div, H, wall, floor_fillet=False)]
+    air_a.append(cell_pocket("wall", LA - wall, "wall", "wall", z_div, H + 1, H, wall, floor_fillet=False))
+    air_b.append(cell_pocket(LA + wall, "wall", "wall", "wall", z_div, H + 1, H, wall, floor_fillet=False))
+    a = shell_a - mf.Manifold.batch_boolean(air_a, mf.OpType.Add)
+    b = shell_b - mf.Manifold.batch_boolean(air_b, mf.OpType.Add)
+    # The seam walls stop below the clip; the cut is wide enough to clear the corner fillets there.
+    seam_cut = cube(LA - wall - CELL_R - 1, LA + wall + CELL_R + 1, wall, W - wall, seam_top, H + 1)
     a, b = a - seam_cut, b - seam_cut
 
-    y_split = wall + p["section_3a"]
+    # Rounded divider tops.
+    def top_round_y(x_center, z):
+        rod = mf.Manifold.cylinder(W, DIVIDER / 2, DIVIDER / 2, 24).rotate([-90, 0, 0])
+        return rod.translate([x_center, 0, z])
+    rod_div = top_round_y(divider_x + DIVIDER / 2, z_div)
+    rod_low = mf.Manifold.cylinder(L, DIVIDER / 2, DIVIDER / 2, 24).rotate([0, 90, 0]).translate([0, W / 2, z_low])
+    rod_low = rod_low ^ cube(s3_x0 - 1, L, -1, W + 1, -1, H + 1)
     if k["seam_after"] == 1:
-        x = LA + wall + p["section_2"]
-        b += cube(x, x + DIVIDER, -1, W + 1, 0, H - DIVIDER_DROP) ^ shell_b
-        section_3_x0 = x + DIVIDER
+        b += rod_div ^ shell_b
     else:
-        x = wall + p["section_1"]
-        a += cube(x, x + DIVIDER, -1, W + 1, 0, H - DIVIDER_DROP) ^ shell_a
-        section_3_x0 = LA + wall
-    b += cube(section_3_x0, L - wall, y_split, y_split + DIVIDER, 0, H - DIVIDER_DROP) ^ shell_b
+        a += rod_div ^ shell_a
+    b += rod_low ^ shell_b
 
-    divider_x = LA + wall + p["section_2"] if k["seam_after"] == 1 else wall + p["section_1"]
-    x_bands = [(0, wall), (LA - wall, LA + wall), (divider_x, divider_x + DIVIDER), (L - wall, L)]
-    y_walls = [(0, wall), (W - wall, W)]
-    cutter = wall_cutter(p, wall, H, x_bands, [(-0.5, y_walls), (L - wall - 0.05, y_walls + [(y_split, y_split + DIVIDER)])])
-    if cutter is not None:
-        a, b = a - cutter, b - cutter
+    # Hand holes, with a thicker band around each.
+    cutters = []
+    for at_start in (True, False):
+        band, cutter, _ = hand_hole(p, H, wall, at_start)
+        if at_start:
+            a += band ^ shell_a
+        else:
+            b += band ^ shell_b
+        cutters.append(cutter)
+    a, b = a - cutters[0], b - cutters[1]
 
+    # Floor joint.
     if raised:
         b += floor_ramp(LA, tab_len + LOOSE + BOSS_MARGIN, ramp_len, k["boss_h"], wall, W - wall) ^ shell_b
     screws = []
@@ -338,20 +412,66 @@ def parts(p):
         screws.append(cyl_z(sx, y, head_bottom, k["counterbore_depth"], p["head_d"])
                       + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["screw_len"], p["screw_d"], 24))
 
-    inner = 2 * wall + 2 * p["clip_gap"]
-    clip = (cube(LA - inner / 2 - CLIP_WALL, LA + inner / 2 + CLIP_WALL, wall + LOOSE, W - wall - LOOSE,
-                 seam_top - p["clip_leg"], seam_top + CLIP_TOP)
-            - cube(LA - inner / 2, LA + inner / 2, -1, W + 1, seam_top - p["clip_leg"] - 1, seam_top))
-    return a, b, clip, screws
+    # Top clip: rounded U over both seam walls, screwed down into a post at each end of the seam.
+    clip_pad = UNDER_HEAD + p["head_h"] + 0.3 + CAP_H
+    clip_top = seam_top + clip_pad
+    gap = p["clip_gap"]
+    outer = wall + gap + CLIP_WALL
+    profile = mf.CrossSection.compose([
+        mf.CrossSection.square([2 * outer, clip_pad]).translate([LA - outer, seam_top]),
+        mf.CrossSection.square([CLIP_WALL, p["clip_leg"]]).translate([LA - outer, seam_top - p["clip_leg"]]),
+        mf.CrossSection.square([CLIP_WALL, p["clip_leg"]]).translate([LA + wall + gap, seam_top - p["clip_leg"]]),
+    ])
+    profile = profile.offset(-CLIP_ROUND, mf.JoinType.Round).offset(CLIP_ROUND, mf.JoinType.Round)
+    y0, y1 = wall + LOOSE, W - wall - LOOSE
+    clip = profile.extrude(y1 - y0).rotate([90, 0, 0]).translate([0, y1, 0])
+    # Rounding the profile can sag the slot roof a hair onto the wall tops; cut the slot back square.
+    clip -= cube(LA - wall - gap, LA + wall + gap, -1, W + 1, seam_top - p["clip_leg"] - 1, seam_top)
+    caps = []
+    cap_d = counterbore_d - HOLE_SHRINK - 2 * press_fit() - 0.1
+    for y_lo, y_hi in ((wall - 1, wall + POST_LEN), (W - wall - POST_LEN, W - wall + 1)):
+        post = rounded_box_section(LA - POST_HALF, LA + POST_HALF, y_lo, y_hi, [2.0] * 4).extrude(seam_top)
+        a += post ^ shell_a
+        b += post ^ shell_b
+        # Over a post only the clip's top remains; its legs would hit the post and the corner fillets.
+        clip -= cube(LA - outer - 1, LA + outer + 1, y_lo - 1, y_hi + LOOSE, seam_top - p["clip_leg"] - 1, seam_top)
+        ys = (y_lo + y_hi) / 2 + (0.5 if y_lo < W / 2 else -0.5)
+        pilot = cyl_z(LA, ys, seam_top - PILOT_DEPTH, seam_top + 0.01, p["pilot_d"] + HOLE_SHRINK)
+        a, b = a - pilot, b - pilot
+        clip -= cyl_z(LA, ys, seam_top - 1, clip_top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
+        clip -= cyl_z(LA, ys, seam_top + UNDER_HEAD, clip_top + 1, counterbore_d)
+        head_bottom = seam_top + UNDER_HEAD
+        screws.append(cyl_z(LA, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
+                      + cyl_z(LA, ys, head_bottom - p["screw_len"], head_bottom, p["screw_d"], 24))
+        caps.append(cyl_z(LA, ys, clip_top - CAP_H, clip_top, cap_d))
+        toward_middle = 1 if ys < W / 2 else -1
+        edge = ys + toward_middle * counterbore_d / 2
+        deep = sorted((edge - toward_middle * 0.8, edge + toward_middle * 0.01))
+        far = sorted((edge + toward_middle * (PRY_NOTCH_L - 0.01), edge + toward_middle * PRY_NOTCH_L))
+        clip -= mf.Manifold.batch_hull([
+            cube(LA - PRY_NOTCH_W / 2, LA + PRY_NOTCH_W / 2, deep[0], deep[1], clip_top - CAP_H, clip_top + 1),
+            cube(LA - PRY_NOTCH_W / 2, LA + PRY_NOTCH_W / 2, far[0], far[1], clip_top - 0.01, clip_top + 1)])
+    for name, shape in (("half A", a), ("half B", b), ("clip", clip)):
+        if shape.status() != mf.Error.NoError or shape.volume() <= 0:
+            raise ValueError(f"{name} failed to build ({shape.status()}); these settings hit a geometry bug")
+    return a, b, clip, screws, caps, dict(clip_top=clip_top, z_low=k["low_divider"])
+
+
+def press_fit():
+    return 0.10            # tolerances.json per_side_clearance.press_fit (measured: false)
 
 
 def build(**p):
-    a, b, clip, screws = parts(p)
+    a, b, clip, screws, caps, _ = parts(p)
     e = p["explode"]
-    pieces = {1: [(a, COLOR_A)], 2: [(b, COLOR_B)], 3: [(clip, COLOR_CLIP)]}.get(int(round(p["show"])))
+    pieces = {1: [(a, COLOR_A)], 2: [(b, COLOR_B)], 3: [(clip, COLOR_CLIP)],
+              4: [(c, COLOR_CAP) for c in caps]}.get(int(round(p["show"])))
     if pieces is None:
         pieces = [(a, COLOR_A), (b.translate([e, 0, 0]), COLOR_B), (clip.translate([0, 0, e]), COLOR_CLIP)]
-        pieces += [(s.translate([e, 0, -e]), COLOR_SCREW) for s in screws]
+        floor_screws, clip_screws = screws[:2], screws[2:]
+        pieces += [(s.translate([e, 0, -e]), COLOR_SCREW) for s in floor_screws]
+        pieces += [(s.translate([0, 0, 1.6 * e]), COLOR_SCREW) for s in clip_screws]
+        pieces += [(c.translate([0, 0, 2.2 * e]), COLOR_CAP) for c in caps]
     vertices, triangles, colors, offset = [], [], [], 0
     for shape, color in pieces:
         mesh = shape.to_mesh()
@@ -371,9 +491,9 @@ def stats(p: dict[str, float]) -> dict[str, str]:
     sections = {
         "section 1": f"{p['section_1']:.0f} x {k['inner_w']:.0f} mm",
         "section 2": f"{p['section_2']:.0f} x {k['inner_w']:.0f} mm",
-        "section 3a": f"{k['section_3']:.0f} x {p['section_3a']:.0f} mm",
-        "section 3b": f"{k['section_3']:.0f} x {k['section_3b']:.0f} mm",
+        "section 3a / 3b": f"{k['section_3']:.0f} x {k['section_3_w']:.0f} mm each, divider {k['low_divider'] - FLOOR:.0f} mm tall",
         "usable height": f"{H - FLOOR:.0f} mm (dividers {H - DIVIDER_DROP - FLOOR:.0f})",
+        "hand holes": f"{p['hand_w']:.0f} x {p['hand_h']:.0f} mm, top {HANDLE_TOP:.0f} mm below the rim",
     }
     if k["seam"] is None:
         return {**sections, "halves": f"no section wall gives two halves under {BED:.0f} mm"}
@@ -393,5 +513,6 @@ def stats(p: dict[str, float]) -> dict[str, str]:
         "screw bite": f"{k['bite']:.1f} mm, {bite_ok}",
         f"screw anchor in section {after + 1}": anchor,
         "outer size": f"{L:.0f} x {W:.0f} x {H:.0f} mm",
-        "hardware": f"2x self-tapping {p['screw_d']:g} x {p['screw_len']:.0f} mm",
+        "hardware": f"4x M{p['screw_d']:g} x {p['screw_len']:.0f} mm screws (2 floor, 2 clip), 2 printed caps",
+        "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head recess {p['head_d'] + 2 * LOOSE:.1f} mm",
     }

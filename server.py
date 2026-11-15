@@ -295,6 +295,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.handle_api("POST")
 
 
+def rebuild_saved_meshes(state: PreviewState) -> None:
+    """Rebuild every model from its saved values; the page shows the saved mesh, which goes stale when model.py changes."""
+    for model_id in model_ids():
+        try:
+            result = build(state, model_id, saved_values(model_id, load_model(model_id)))
+        except Exception as error:  # one broken model must not stop the server from starting
+            log.warning("could not rebuild %s: %s", model_id, error)
+            continue
+        if not result["ok"]:
+            log.warning("rebuild of %s failed: %s", model_id, result.get("error"))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Live 3D preview server for parametric parts.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PART_PREVIEW_PORT", DEFAULT_PORT)))
@@ -307,6 +319,7 @@ def main() -> int:
         log.error("web/dist is missing; run `npm ci` and `npm run build` in web/ first")
         return 1
     Handler.server_state = PreviewState()
+    rebuild_saved_meshes(Handler.server_state)
     host_names = ["127.0.0.1", "localhost", *args.allow_host]
     Handler.allowed_hosts = frozenset(f"{name}:{args.port}" for name in host_names)
     server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
