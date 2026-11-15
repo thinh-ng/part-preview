@@ -3,7 +3,9 @@
 Plate 1 is a seam test strip (print it first), plate 2 is half A with the clip and caps, plate 3 is half B. The file layout copies what
 Bambu Studio itself writes (wrapper objects, one mesh file per part, plates in model_settings.config).
 
-Needs numpy, manifold3d and trimesh:  python scripts/export_dog_storage_box.py [server URL]
+Preview images (plate pictures and a cover of the assembled box) are rendered with pyvista.
+
+Needs numpy, manifold3d, trimesh and pyvista:  python scripts/export_dog_storage_box.py [server URL]
 """
 import json
 import math
@@ -14,6 +16,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 import numpy as np
+import pyvista as pv
 import trimesh
 
 HERE = Path(__file__).resolve().parent
@@ -31,6 +34,9 @@ a, b, clip, _screws, caps, _info = model.parts(dict(values))
 seam = model.layout({**model.SCREW, **values})["seam"]
 
 
+OWNER_COLOUR = ["#A6A9AA"]
+
+
 def with_owner_colours(settings_text):
     """Use the filament colours selected in the owner's Bambu Studio, so opening the file doesn't replace them."""
     import os
@@ -44,10 +50,39 @@ def with_owner_colours(settings_text):
     settings = json.loads(settings_text)
     colours = presets["filament_colors"].split(";")
     settings["filament_colour"] = colours
+    OWNER_COLOUR[0] = colours[0]
     settings["filament_multi_colour"] = presets.get("filament_multi_colors", presets["filament_colors"]).split(";")
     settings["filament_colour_type"] = presets.get("filament_color_types", "1").split(";")
     print("filament colour from Bambu Studio:", colours)
     return json.dumps(settings, indent=4)
+
+
+def render_png(meshes, size, colour, plate=False):
+    """PNG bytes of meshes seen from the front-left; `plate` draws the build plate under them."""
+    import tempfile
+    pv.OFF_SCREEN = True
+    plotter = pv.Plotter(off_screen=True, window_size=(size, size))
+    plotter.set_background("#f2f2f2")
+    if plate:
+        plotter.add_mesh(pv.Box(bounds=(0, BED, 0, BED, -1.5, 0)), color="#3a3a3a")
+    for mesh in meshes:
+        faces = np.hstack([np.full((len(mesh.faces), 1), 3), mesh.faces]).ravel()
+        plotter.add_mesh(pv.PolyData(np.asarray(mesh.vertices), faces), color=colour, specular=0.2)
+    plotter.view_isometric()
+    plotter.camera.azimuth = -20
+    plotter.camera.elevation = 10
+    plotter.reset_camera()
+    plotter.camera.zoom(1.15 if plate else 1.0)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "shot.png"
+        plotter.screenshot(str(path))
+        plotter.close()
+        return path.read_bytes()
+
+
+def mesh_in_place(shape):
+    m = shape.to_mesh()
+    return trimesh.Trimesh(np.asarray(m.vert_properties)[:, :3], np.asarray(m.tri_verts), process=True)
 
 
 def mesh_of(shape, flip=False):
@@ -112,9 +147,13 @@ for plate_index, (plate_name, parts) in enumerate(plates):
                            '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/></part></object>')
         instances.append(f'<model_instance><metadata key="object_id" value="{wrapper_id}"/>'
                          '<metadata key="instance_id" value="0"/></model_instance>')
-    plates_cfg.append(f'<plate><metadata key="plater_id" value="{plate_index + 1}"/>'
+    n = plate_index + 1
+    plates_cfg.append(f'<plate><metadata key="plater_id" value="{n}"/>'
                       f'<metadata key="plater_name" value="{escape(plate_name)}"/>'
-                      '<metadata key="locked" value="false"/>' + "".join(instances) + "</plate>")
+                      '<metadata key="locked" value="false"/>'
+                      f'<metadata key="thumbnail_file" value="Metadata/plate_{n}.png"/>'
+                      f'<metadata key="thumbnail_no_light_file" value="Metadata/plate_no_light_{n}.png"/>'
+                      + "".join(instances) + "</plate>")
 
 main = ('<?xml version="1.0" encoding="UTF-8"?>\n'
         '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
@@ -142,10 +181,25 @@ files["3D/_rels/3dmodel.model.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\
                                          + "".join(rels) + "</Relationships>")
 files["Metadata/model_settings.config"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>'
                                             + "".join(objects_cfg) + "".join(plates_cfg) + "</config>")
-files["_rels/.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships '
-                        'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-                        '<Relationship Target="/3D/3dmodel.model" Id="rel-1" '
-                        'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+# Previews: one picture per plate for Bambu Studio's plate list, and a cover of the assembled box.
+for plate_index, (_, parts) in enumerate(plates):
+    placed = [m.copy().apply_translation([cx, cy, 0]) for _, m, cx, cy in parts]
+    picture = render_png(placed, 512, OWNER_COLOUR[0], plate=True)
+    files[f"Metadata/plate_{plate_index + 1}.png"] = picture
+    files[f"Metadata/plate_no_light_{plate_index + 1}.png"] = picture
+    files[f"Metadata/plate_{plate_index + 1}_small.png"] = render_png(placed, 128, OWNER_COLOUR[0], plate=True)
+assembled = [mesh_in_place(shape) for shape in (a, b, clip, *caps)]
+for name, size in {"thumbnail_3mf.png": 512, "thumbnail_middle.png": 256, "thumbnail_small.png": 128}.items():
+    files[f"Auxiliaries/.thumbnails/{name}"] = render_png(assembled, size, OWNER_COLOUR[0])
+RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+files["_rels/.rels"] = (
+    f'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{RELS}">'
+    '<Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+    f'<Relationship Target="/Auxiliaries/.thumbnails/thumbnail_3mf.png" Id="rel-2" Type="{RELS}/metadata/thumbnail"/>'
+    '<Relationship Target="/Auxiliaries/.thumbnails/thumbnail_middle.png" Id="rel-4" '
+    'Type="http://schemas.bambulab.com/package/2021/cover-thumbnail-middle"/>'
+    '<Relationship Target="/Auxiliaries/.thumbnails/thumbnail_small.png" Id="rel-5" '
+    'Type="http://schemas.bambulab.com/package/2021/cover-thumbnail-small"/></Relationships>')
 files["[Content_Types].xml"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types '
                                 'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
                                 '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
