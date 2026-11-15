@@ -57,6 +57,19 @@ def with_owner_colours(settings_text):
     return json.dumps(settings, indent=4)
 
 
+# Changes from stock 0.20mm Standard: solid 2.1 mm walls and more plastic around the screw pilot holes.
+PRINT_OVERRIDES = {"wall_loops": "3", "wall_generator": "arachne"}
+
+
+def with_print_overrides(settings_text):
+    """Apply PRINT_OVERRIDES and list them as changed, so Bambu Studio marks them like hand-made edits."""
+    settings = json.loads(settings_text)
+    settings.update(PRINT_OVERRIDES)
+    changed = [k for k in settings["different_settings_to_system"][0].split(";") if k]
+    settings["different_settings_to_system"][0] = ";".join(sorted(set(changed) | set(PRINT_OVERRIDES)))
+    return json.dumps(settings, indent=4)
+
+
 def render_png(meshes, size, colour, plate=False):
     """PNG bytes of meshes seen from the front-left; `plate` draws the build plate under them."""
     import tempfile
@@ -173,7 +186,7 @@ files["3D/3dmodel.model"] = main
 # X2D project saved by Bambu Studio 02.08 (0.20mm Standard, Generic PLA).
 for name in ("project_settings.config", "slice_info.config"):
     files[f"Metadata/{name}"] = (HERE / f"bambu-x2d-{name}").read_text(encoding="utf-8")
-files["Metadata/project_settings.config"] = with_owner_colours(files["Metadata/project_settings.config"])
+files["Metadata/project_settings.config"] = with_print_overrides(with_owner_colours(files["Metadata/project_settings.config"]))
 files["Metadata/filament_sequence.json"] = json.dumps(
     {f"plate_{i + 1}": {"nozzle_sequence": [], "optimal_assignment": [], "sequence": []} for i in range(len(plates))})
 files["3D/_rels/3dmodel.model.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships '
