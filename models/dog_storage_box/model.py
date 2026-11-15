@@ -560,6 +560,25 @@ def overlap_bite(p):
     return p["screw_len"] - tab_under_head - LOOSE * math.sqrt(2)
 
 
+TEST_MARGIN = 2.0          # plain wall kept beyond the last tested feature in a test strip
+
+
+def test_strip_heights(p):
+    """(top of the floor-joint strip, bottom of the top-joint strip): the seam test is these two strips,
+    each holding one joint whole, instead of the full wall height."""
+    p = {**SCREW, **p}
+    k = layout(p)
+    H, wall = p["height"], p["wall"]
+    floor_strip_top = k["boss_h"] + TEST_MARGIN
+    if p["top_joint"] >= 0.5:
+        top = H - DIVIDER_DROP
+        seat_bottom = top - (p["head_h"] + HEAD_CLEAR) - LONGEST_SCREW - 0.5 - SEAT_FLOOR
+        lowest = seat_bottom - (OVERLAP_REACH + 2.0 - wall)    # foot of the seat's 45° underside
+    else:
+        lowest = H - SEAM_DROP + UNDER_HEAD - LONGEST_SCREW - 0.5   # bottom of the clip posts' pilot holes
+    return floor_strip_top, lowest - TEST_MARGIN
+
+
 def build(**p):
     a, b, clip, screws, _ = parts(p)
     e = p["explode"]
