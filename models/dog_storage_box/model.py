@@ -3,7 +3,7 @@
 The halves join on the wall after section 1 or 2, whichever fits the bed. Half A's floor tabs
 slide under half B and M2.5 machine screws go up from below into a raised floor or two bosses.
 A rounded U clip over the double seam wall is screwed down into two posts at the seam's ends,
-with printed caps hiding the screw heads. Each compartment is cut as its own rounded pocket, so
+with the screw heads sunk into round pockets. Each compartment is cut as its own rounded pocket, so
 every inside corner is filleted. Clearances are tolerances.json starting values, not yet
 measured on the printer.
 """
@@ -35,8 +35,8 @@ PARAMS = [
     dict(key="clip_leg", label="Top clip reach down (mm)", min=4, max=20, step=0.5, default=8.0),
     dict(key="clip_gap", label="Top clip gap per side (mm)", min=0.0, max=0.5, step=0.05, default=0.25),
     dict(key="explode", label="Explode view (mm)", min=0, max=80, step=1, default=0.0),
-    dict(key="show", label="Show", min=0, max=4, step=1, default=0,
-         options=["Whole box", "Half A only", "Half B only", "Top clip only", "Screw caps only"]),
+    dict(key="show", label="Show", min=0, max=3, step=1, default=0,
+         options=["Whole box", "Half A only", "Half B only", "Top clip only"]),
 ]
 
 LENGTH = 375.0              # owner: must fit the space exactly
@@ -59,7 +59,7 @@ PILOT_WALL = 1.2            # plastic kept around the pilot hole where the boss 
 SMOOTH_LAYERS = 16
 CLIP_WALL = 2.6            # leaves a flat top wide enough for the screw cap after rounding
 CLIP_ROUND = 1.2
-CAP_H = 1.2                # printed cap pressed over each clip screw head
+HEAD_SINK = 1.2            # top screw heads sit this far below the surface, in a round pocket
 POST_LEN = 11.0            # seam posts the clip screws bite into, against each long wall
 POST_W = 8.0               # half-A post, measured from the seam wall into section 1
 EAR_MARGIN = 1.6           # clip plastic around the screw-head recess on each end tab
@@ -69,7 +69,8 @@ OVERLAP_REACH = 13.6       # how far each tab reaches over half B
 OVERLAP_TIP = 2.0          # tab thickness at its tip
 OVERLAP_W = 12.0           # tab width along the seam
 OVERLAP_SCREW_X = 6.0      # screw distance from the seam face
-OVERLAP_POST_MARGIN = 1.5  # half B's post reaches this much past the tab on each side
+OVERLAP_POST_MARGIN = 1.5  # half B's seat reaches this much past the tab on each side
+SEAT_FLOOR = 1.5           # solid plastic under the deepest pilot hole
 CORNER_R = 8.0             # outside vertical corners
 CELL_R = 4.0               # inside vertical corners at dividers and the seam
 FLOOR_FILLET = 3.0         # floor-to-wall round inside each compartment
@@ -85,12 +86,11 @@ SEG = 48
 # The flat-bottomed head recess takes any of those heads up to 7 x 3 mm; a flat head seats on the hole's edge.
 SCREW = dict(screw_d=2.9, screw_len=12.0, head_d=7.0, head_h=3.0, pilot_d=2.4)
 LONGEST_SCREW = 13.0       # pilot holes are deep enough for the 13 mm ISO length too
-PRY_NOTCH_W, PRY_NOTCH_L = 2.5, 4.0   # sloped notch: a screwdriver tip slides down it and under the cap edge
+
 COLOR_A = (0.30, 0.47, 0.66)      # blue
 COLOR_B = (0.96, 0.52, 0.09)      # orange
 COLOR_CLIP = (0.33, 0.64, 0.29)   # green
 COLOR_SCREW = (0.15, 0.15, 0.15)
-COLOR_CAP = (0.20, 0.45, 0.20)
 
 
 def cube(x0, x1, y0, y1, z0, z1):
@@ -446,12 +446,12 @@ def parts(p):
                       + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["screw_len"], p["screw_d"], 24))
 
     if overlap:
-        a, b, top_screws, caps = overlap_tabs(p, a, b, shell, shell_b, LA, seam_top, counterbore_d)
+        a, b, top_screws = overlap_tabs(p, a, b, shell, shell_b, LA, seam_top, counterbore_d)
         screws += top_screws
         clip, clip_top = None, seam_top
     else:
         # Top clip: rounded U over both seam walls, screwed down into a post at each end of the seam.
-        clip_pad = UNDER_HEAD + p["head_h"] + 0.3 + CAP_H
+        clip_pad = UNDER_HEAD + p["head_h"] + 0.3 + HEAD_SINK
         clip_top = seam_top + clip_pad
         gap = p["clip_gap"]
         outer = wall + gap + CLIP_WALL
@@ -465,8 +465,6 @@ def parts(p):
         clip = profile.extrude(y1 - y0).rotate([90, 0, 0]).translate([0, y1, 0])
         # Rounding the profile can sag the slot roof a hair onto the wall tops; cut the slot back square.
         clip -= cube(LA - wall - gap, LA + wall + gap, -1, W + 1, seam_top - p["clip_leg"] - 1, seam_top)
-        caps = []
-        cap_d = counterbore_d - HOLE_SHRINK - 2 * press_fit() - 0.1
         for y_lo, y_hi in ((wall - 1, wall + POST_LEN), (W - wall - POST_LEN, W - wall + 1)):
             ear_r = counterbore_d / 2 + BED_CHAMFER + EAR_MARGIN
             ys = wall + ear_r + LOOSE if y_lo < W / 2 else W - wall - ear_r - LOOSE   # end tab clears the long wall
@@ -495,38 +493,12 @@ def parts(p):
             head_bottom = seam_top + UNDER_HEAD
             screws.append(cyl_z(xs, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
                           + cyl_z(xs, ys, head_bottom - p["screw_len"], head_bottom, p["screw_d"], 24))
-            lead_in = 0.3   # the cap's bed-side edge is the one pressed in first
-            caps.append(cyl_z(xs, ys, clip_top - CAP_H + lead_in, clip_top, cap_d)
-                        + mf.Manifold.cylinder(lead_in, cap_d / 2 - lead_in, cap_d / 2, SEG).translate([xs, ys, clip_top - CAP_H]))
-            toward_middle = 1 if ys < W / 2 else -1
-            edge = ys + toward_middle * counterbore_d / 2
-            deep = sorted((edge - toward_middle * 0.8, edge + toward_middle * 0.01))
-            far = sorted((edge + toward_middle * (PRY_NOTCH_L - 0.01), edge + toward_middle * PRY_NOTCH_L))
-            clip -= mf.Manifold.batch_hull([
-                cube(xs - PRY_NOTCH_W / 2, xs + PRY_NOTCH_W / 2, deep[0], deep[1], clip_top - CAP_H, clip_top + 1),
-                cube(xs - PRY_NOTCH_W / 2, xs + PRY_NOTCH_W / 2, far[0], far[1], clip_top - 0.01, clip_top + 1)])
     for name, shape in (("half A", a), ("half B", b), ("clip", clip)):
         if shape is None:
             continue
         if shape.status() != mf.Error.NoError or shape.volume() <= 0:
             raise ValueError(f"{name} failed to build ({shape.status()}); these settings hit a geometry bug")
-    return a, b, clip, screws, caps, dict(clip_top=clip_top, z_low=k["low_divider"])
-
-
-def cap_and_notch(x, y, top, counterbore_d):
-    """Printed cap over a screw head with its top at `top`, and the sloped notch that lets it be levered out."""
-    lead_in = 0.3   # the cap's bed-side edge is the one pressed in first
-    cap_d = counterbore_d - HOLE_SHRINK - 2 * press_fit() - 0.1
-    cap = (cyl_z(x, y, top - CAP_H + lead_in, top, cap_d)
-           + mf.Manifold.cylinder(lead_in, cap_d / 2 - lead_in, cap_d / 2, SEG).translate([x, y, top - CAP_H]))
-    toward_middle = 1 if y < WIDTH / 2 else -1
-    edge = y + toward_middle * counterbore_d / 2
-    deep = sorted((edge - toward_middle * 0.8, edge + toward_middle * 0.01))
-    far = sorted((edge + toward_middle * (PRY_NOTCH_L - 0.01), edge + toward_middle * PRY_NOTCH_L))
-    notch = mf.Manifold.batch_hull([
-        cube(x - PRY_NOTCH_W / 2, x + PRY_NOTCH_W / 2, deep[0], deep[1], top - CAP_H, top + 1),
-        cube(x - PRY_NOTCH_W / 2, x + PRY_NOTCH_W / 2, far[0], far[1], top - 0.01, top + 1)])
-    return cap, notch
+    return a, b, clip, screws, dict(clip_top=clip_top, z_low=k["low_divider"])
 
 
 def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
@@ -535,9 +507,9 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
     x1 = LA + OVERLAP_REACH
     z_low = top - OVERLAP_TIP - OVERLAP_REACH
     profile = mf.CrossSection([[(LA - 0.01, z_low), (x1, top - OVERLAP_TIP), (x1, top), (LA - 0.01, top)]])
-    recess = CAP_H + 0.3 + p["head_h"]
+    recess = HEAD_SINK + 0.3 + p["head_h"]
     head_bottom = top - recess
-    screws, caps = [], []
+    screws = []
     for ys in (wall + 1 + OVERLAP_W / 2, W / 2, W - wall - 1 - OVERLAP_W / 2):
         def along_y(section, width):
             return section.extrude(width).rotate([90, 0, 0]).translate([0, ys + width / 2, 0])
@@ -550,9 +522,18 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
         room = (along_y(profile.offset(LOOSE, mf.JoinType.Miter), OVERLAP_W + 2 * LOOSE)
                 + cube(LA - 1, x1 + LOOSE, ys - OVERLAP_W / 2 - LOOSE, ys + OVERLAP_W / 2 + LOOSE, top, top + 5)) \
             ^ plan(LA - 0.5, x1 + LOOSE, OVERLAP_W / 2 + LOOSE)
-        post = plan(LA, x1 + 2.0, OVERLAP_W / 2 + OVERLAP_POST_MARGIN) ^ cube(-1, LENGTH + 1, -1, W + 1, 0, top)
+        # Half B's seat hangs off its seam wall: deep enough for the screw, then a 45° underside back to the wall,
+        # so it prints without support and doesn't run down to the floor as a column.
+        half_w = OVERLAP_W / 2 + OVERLAP_POST_MARGIN
+        seat_end = x1 + 2.0
+        z_bottom = head_bottom - LONGEST_SCREW - 0.5 - SEAT_FLOOR
+        footprint = rounded_box_section(LA, seat_end, ys - half_w, ys + half_w, [0.05, 3.0, 3.0, 0.05])
+        wall_strip = rounded_box_section(LA, LA + wall, ys - half_w, ys + half_w, [0.05] * 4)
+        seat = (footprint.extrude(top - z_bottom).translate([0, 0, z_bottom])
+                + mf.Manifold.batch_hull([layer(footprint, z_bottom),
+                                          layer(wall_strip, z_bottom - (seat_end - LA - wall))]))
         a += tab ^ shell
-        b += post ^ shell_b
+        b += seat ^ shell_b
         b -= room
         xs = LA + OVERLAP_SCREW_X
         a -= cyl_z(xs, ys, z_low - 1, top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
@@ -560,30 +541,22 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
         b -= cyl_z(xs, ys, head_bottom - LONGEST_SCREW - 0.5, top, p["pilot_d"] + HOLE_SHRINK)
         screws.append(cyl_z(xs, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
                       + cyl_z(xs, ys, head_bottom - p["screw_len"], head_bottom, p["screw_d"], 24))
-        cap, notch = cap_and_notch(xs, ys, top, counterbore_d)
-        caps.append(cap)
-        a -= notch
-    return a, b, screws, caps
+    return a, b, screws
 
 
 def overlap_bite(p, top):
     """Thread length of a top screw inside half B's post."""
-    under_head = (top - CAP_H - 0.3 - p["head_h"]) - (top - OVERLAP_TIP - (OVERLAP_REACH - OVERLAP_SCREW_X))
+    under_head = (top - HEAD_SINK - 0.3 - p["head_h"]) - (top - OVERLAP_TIP - (OVERLAP_REACH - OVERLAP_SCREW_X))
     return p["screw_len"] - under_head - LOOSE * math.sqrt(2)
 
 
-def press_fit():
-    return 0.10            # tolerances.json per_side_clearance.press_fit (measured: false)
-
-
 def build(**p):
-    a, b, clip, screws, caps, _ = parts(p)
+    a, b, clip, screws, _ = parts(p)
     e = p["explode"]
     show = int(round(p["show"]))
     if show == 3 and clip is None:
         raise ValueError("there is no clip with overlap tabs: pick another 'Show' option")
-    pieces = {1: [(a, COLOR_A)], 2: [(b, COLOR_B)], 3: [(clip, COLOR_CLIP)],
-              4: [(c, COLOR_CAP) for c in caps]}.get(show)
+    pieces = {1: [(a, COLOR_A)], 2: [(b, COLOR_B)], 3: [(clip, COLOR_CLIP)]}.get(show)
     if pieces is None:
         pieces = [(a, COLOR_A), (b.translate([e, 0, 0]), COLOR_B)]
         if clip is not None:
@@ -591,7 +564,6 @@ def build(**p):
         floor_screws, clip_screws = screws[:2], screws[2:]
         pieces += [(s.translate([e, 0, -e]), COLOR_SCREW) for s in floor_screws]
         pieces += [(s.translate([0, 0, 1.6 * e]), COLOR_SCREW) for s in clip_screws]
-        pieces += [(c.translate([0, 0, 2.2 * e]), COLOR_CAP) for c in caps]
     vertices, triangles, colors, offset = [], [], [], 0
     for shape, color in pieces:
         mesh = shape.to_mesh()
@@ -636,7 +608,7 @@ def stats(p: dict[str, float]) -> dict[str, str]:
         f"screw anchor in section {after + 1}": anchor,
         "outer size": f"{L:.0f} x {W:.0f} x {H:.0f} mm",
         "hardware": (f"{2 + top_count}x 3 mm self-tapping (ST{p['screw_d']:g}) x 12-13 mm, pan, flat or round head: "
-                     f"2 floor, {top_count} top; {top_count} printed caps" + ("" if overlap else ", 1 clip")),
+                     f"2 floor, {top_count} top" + ("" if overlap else "; 1 clip")),
         "top screw bite": (f"{overlap_bite(p, H - DIVIDER_DROP):.1f} mm into half B's posts" if overlap
                            else f"{p['screw_len'] - UNDER_HEAD:.1f} mm into half A's posts"),
         "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head recess {p['head_d'] + 2 * LOOSE:.1f} mm",

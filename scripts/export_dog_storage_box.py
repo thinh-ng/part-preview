@@ -30,7 +30,7 @@ PLATE_STRIDE = BED * 1.2      # Bambu Studio's spacing between neighbouring plat
 GAP = 5.0                     # between parts on a plate
 
 values = json.load(urllib.request.urlopen(f"{SERVER}/api/schema?model=dog_storage_box", timeout=10))["values"]
-a, b, clip, _screws, caps, _info = model.parts(dict(values))
+a, b, clip, _screws, _info = model.parts(dict(values))
 seam = model.layout({**model.SCREW, **values})["seam"]
 
 
@@ -124,9 +124,8 @@ def row(parts):
 
 
 def small_parts(suffix=""):
-    """The clip (when the top joint uses one) and a cap per top screw."""
-    parts = [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
-    return parts + [(f"screw cap{suffix} {i + 1}", mesh_of(c)) for i, c in enumerate(caps)]
+    """The clip, when the top joint uses one."""
+    return [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
 
 
 reach = model.a_reach({**model.SCREW, **values})   # half A's floor tabs or top overlap tabs reach past the seam
@@ -135,7 +134,7 @@ plates = [
         ("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, 300))),
         ("seam test half B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
         *small_parts(" (test)")])),
-    ("Half A" + (" + clip" if clip is not None else "") + " + caps", row([("half A", mesh_of(a)), *small_parts()])),
+    ("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
     ("Half B", row([("half B", mesh_of(b))])),
 ]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
@@ -206,7 +205,7 @@ for plate_index, (_, parts) in enumerate(plates):
     files[f"Metadata/plate_{plate_index + 1}.png"] = picture
     files[f"Metadata/plate_no_light_{plate_index + 1}.png"] = picture
     files[f"Metadata/plate_{plate_index + 1}_small.png"] = render_png(placed, 128, OWNER_COLOUR[0], plate=True)
-assembled = [mesh_in_place(shape) for shape in (a, b, clip, *caps) if shape is not None]
+assembled = [mesh_in_place(shape) for shape in (a, b, clip) if shape is not None]
 for name, size in {"thumbnail_3mf.png": 512, "thumbnail_middle.png": 256, "thumbnail_small.png": 128}.items():
     files[f"Auxiliaries/.thumbnails/{name}"] = render_png(assembled, size, OWNER_COLOUR[0])
 RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
