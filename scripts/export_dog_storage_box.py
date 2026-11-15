@@ -57,6 +57,54 @@ def with_owner_colours(settings_text):
     return json.dumps(settings, indent=4)
 
 
+def resolve_system_preset(kind, name):
+    """A Bambu Studio system preset with its `inherits` chain merged, read from the owner's install."""
+    import os
+    root = Path(os.environ.get("APPDATA", "")) / "BambuStudio" / "system" / "BBL" / kind
+    by_name = {}
+    for path in root.rglob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if "name" in data:
+            by_name[data["name"]] = data
+
+    def merged(n):
+        data = by_name[n]
+        return {**(merged(data["inherits"]) if data.get("inherits") else {}), **data}
+    return merged(name)
+
+
+def with_stock_presets(settings_text):
+    """Reset every setting to the stock value of the presets this file names, so nothing a template project
+    changed (or an older Bambu Studio profile froze in) carries into the export. Lists Bambu expands per
+    nozzle variant keep their length; only same-shaped values are replaced."""
+    settings = json.loads(settings_text)
+    stock = {}
+    stock.update(resolve_system_preset("machine", settings["printer_settings_id"]))
+    stock.update(resolve_system_preset("filament", settings["filament_settings_id"][0]))
+    stock.update(resolve_system_preset("process", settings["print_settings_id"]))
+    keep = {"name", "inherits", "from", "version", "type", "instantiation", "setting_id", "filament_id",
+            "different_settings_to_system", "print_settings_id", "printer_settings_id", "filament_settings_id"}
+    replaced = 0
+    for key, value in stock.items():
+        if key in keep or key not in settings:
+            continue
+        current = settings[key]
+        if isinstance(current, list) and not isinstance(value, list):
+            value = [value]
+        if isinstance(current, list) != isinstance(value, list) or (
+                isinstance(current, list) and len(current) != len(value)):
+            continue   # Bambu expands some lists per nozzle variant itself; leave those as it wrote them
+        if current != value:
+            settings[key] = value
+            replaced += 1
+    settings["different_settings_to_system"] = ["", "", ""][:len(settings["different_settings_to_system"])]
+    print(f"stock presets applied: {replaced} values reset to the installed system presets")
+    return json.dumps(settings, indent=4)
+
+
 # Changes from stock 0.20mm Standard, strength first: solid walls, a thick solid ring around every screw hole,
 # and 40% gyroid (strong in every direction) in the few thick parts. Gains above ~50% infill are small.
 PRINT_OVERRIDES = {"wall_loops": "4", "wall_generator": "arachne",
@@ -190,7 +238,7 @@ files["3D/3dmodel.model"] = main
 # X2D project saved by Bambu Studio 02.08 (0.20mm Standard, Generic PLA).
 for name in ("project_settings.config", "slice_info.config"):
     files[f"Metadata/{name}"] = (HERE / f"bambu-x2d-{name}").read_text(encoding="utf-8")
-files["Metadata/project_settings.config"] = with_print_overrides(with_owner_colours(files["Metadata/project_settings.config"]))
+files["Metadata/project_settings.config"] = with_print_overrides(with_owner_colours(with_stock_presets(files["Metadata/project_settings.config"])))
 files["Metadata/filament_sequence.json"] = json.dumps(
     {f"plate_{i + 1}": {"nozzle_sequence": [], "optimal_assignment": [], "sequence": []} for i in range(len(plates))})
 files["3D/_rels/3dmodel.model.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships '
