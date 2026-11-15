@@ -123,16 +123,19 @@ def row(parts):
     return placed
 
 
-caps_mesh = [mesh_of(c) for c in caps]
+def small_parts(suffix=""):
+    """The clip (when the top joint uses one) and a cap per top screw."""
+    parts = [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
+    return parts + [(f"screw cap{suffix} {i + 1}", mesh_of(c)) for i, c in enumerate(caps)]
+
+
+reach = model.a_reach({**model.SCREW, **values})   # half A's floor tabs or top overlap tabs reach past the seam
 plates = [
     ("Seam test - print first", row([
-        ("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam, -1, model.WIDTH + 1, -1, 300))),
+        ("seam test half A", mesh_of(a ^ model.cube(seam - 20, seam + reach + 1, -1, model.WIDTH + 1, -1, 300))),
         ("seam test half B", mesh_of(b ^ model.cube(seam, seam + 35, -1, model.WIDTH + 1, -1, 300))),
-        ("top clip (test)", mesh_of(clip, flip=True)),
-        ("screw cap (test) 1", caps_mesh[0]), ("screw cap (test) 2", caps_mesh[1].copy())])),
-    ("Half A + clip + caps", row([
-        ("half A", mesh_of(a)), ("top clip", mesh_of(clip, flip=True)),
-        ("screw cap 1", caps_mesh[0].copy()), ("screw cap 2", caps_mesh[1].copy())])),
+        *small_parts(" (test)")])),
+    ("Half A" + (" + clip" if clip is not None else "") + " + caps", row([("half A", mesh_of(a)), *small_parts()])),
     ("Half B", row([("half B", mesh_of(b))])),
 ]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
@@ -144,7 +147,7 @@ for plate_index, (plate_name, parts) in enumerate(plates):
     for name, mesh, cx, cy in parts:
         mesh_id, wrapper_id = next_id, next_id + 1
         next_id += 2
-        vertices = "".join(f'<vertex x="{x:.4f}" y="{y:.4f}" z="{z:.4f}"/>' for x, y, z in mesh.vertices)
+        vertices = "".join(f'<vertex x="{x:.6f}" y="{y:.6f}" z="{z:.6f}"/>' for x, y, z in mesh.vertices)
         triangles = "".join(f'<triangle v1="{i}" v2="{j}" v3="{k}"/>' for i, j, k in mesh.faces)
         path = f"3D/Objects/object_{mesh_id}.model"
         files[path] = ('<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -203,7 +206,7 @@ for plate_index, (_, parts) in enumerate(plates):
     files[f"Metadata/plate_{plate_index + 1}.png"] = picture
     files[f"Metadata/plate_no_light_{plate_index + 1}.png"] = picture
     files[f"Metadata/plate_{plate_index + 1}_small.png"] = render_png(placed, 128, OWNER_COLOUR[0], plate=True)
-assembled = [mesh_in_place(shape) for shape in (a, b, clip, *caps)]
+assembled = [mesh_in_place(shape) for shape in (a, b, clip, *caps) if shape is not None]
 for name, size in {"thumbnail_3mf.png": 512, "thumbnail_middle.png": 256, "thumbnail_small.png": 128}.items():
     files[f"Auxiliaries/.thumbnails/{name}"] = render_png(assembled, size, OWNER_COLOUR[0])
 RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
