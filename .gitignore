@@ -7,5 +7,5 @@ web/dist/
 # Built from a third-party design (Josh-3D Card Shuffler); kept local, not redistributed.
 models/card_tray/
 
-# Other people's print files: their licenses allow personal use, not redistribution.
-prints/third-party/
+# Print files stay local; some are other people's designs whose licenses don't allow redistribution.
+prints/

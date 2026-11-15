@@ -1,6 +1,6 @@
 """Export the dog storage box as print-ready 3MF plates from a part-preview server's saved slider values.
 
-Needs numpy, manifold3d, trimesh and lxml:  python prints/export_dog_storage_box.py [server URL]
+Needs numpy, manifold3d, trimesh and lxml:  python scripts/export_dog_storage_box.py [server URL]
 """
 import json
 import sys
@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "models" / "dog_storage_box"))
 import model  # noqa: E402
 
-OUT = HERE / "dog-storage-box"
+OUT = HERE.parent / "prints" / "dog-storage-box"
 GAP = 10.0
 SERVER = sys.argv[1] if len(sys.argv) > 1 else "http://pi4.local:8765"
 
