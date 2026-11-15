@@ -31,6 +31,25 @@ a, b, clip, _screws, caps, _info = model.parts(dict(values))
 seam = model.layout({**model.SCREW, **values})["seam"]
 
 
+def with_owner_colours(settings_text):
+    """Use the filament colours selected in the owner's Bambu Studio, so opening the file doesn't replace them."""
+    import os
+    conf = Path(os.environ.get("APPDATA", "")) / "BambuStudio" / "BambuStudio.conf"
+    try:
+        text = conf.read_text(encoding="utf-8")
+        presets = json.loads(text[:text.rfind("# MD5 checksum")])["presets"]
+    except (OSError, ValueError, KeyError):
+        print("Bambu Studio config not readable; keeping the template's filament colour")
+        return settings_text
+    settings = json.loads(settings_text)
+    colours = presets["filament_colors"].split(";")
+    settings["filament_colour"] = colours
+    settings["filament_multi_colour"] = presets.get("filament_multi_colors", presets["filament_colors"]).split(";")
+    settings["filament_colour_type"] = presets.get("filament_color_types", "1").split(";")
+    print("filament colour from Bambu Studio:", colours)
+    return json.dumps(settings, indent=4)
+
+
 def mesh_of(shape, flip=False):
     m = shape.to_mesh()
     mesh = trimesh.Trimesh(np.asarray(m.vert_properties)[:, :3], np.asarray(m.tri_verts), process=True)
@@ -115,6 +134,7 @@ files["3D/3dmodel.model"] = main
 # X2D project saved by Bambu Studio 02.08 (0.20mm Standard, Generic PLA).
 for name in ("project_settings.config", "slice_info.config"):
     files[f"Metadata/{name}"] = (HERE / f"bambu-x2d-{name}").read_text(encoding="utf-8")
+files["Metadata/project_settings.config"] = with_owner_colours(files["Metadata/project_settings.config"])
 files["Metadata/filament_sequence.json"] = json.dumps(
     {f"plate_{i + 1}": {"nozzle_sequence": [], "optimal_assignment": [], "sequence": []} for i in range(len(plates))})
 files["3D/_rels/3dmodel.model.rels"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships '
