@@ -572,7 +572,7 @@ def overlap_bite(p):
 
 
 def seam_test(p, a, b):
-    """One floor joint, cut just above the slot roof: tab slide, slot roof and head-pocket ceiling, as printed in the box.
+    """One floor joint, cut just above the slot roof: slot roof and head-pocket ceiling, as printed in the box.
 
     The top joint and the screw bite already passed a print, so the bump and the top are left out.
     """
@@ -581,7 +581,10 @@ def seam_test(p, a, b):
     LA, y = k["seam"], p["tab_inset"]
     top = math.ceil(round((k["slot_top"] + FLOOR) / LAYER, 6)) * LAYER
     half_y = k["boss_w"] / 2 + 2
-    piece_a = a ^ cube(LA - 6, LA + p["tab_len"] + 1, y - half_y, y + half_y, -1, top)
+    # Half A: only the tab's end around the head pocket, full tab height; it still slides into the slot.
+    hole_x = LA + p["tab_len"] - p["tab_w"] / 2
+    counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
+    piece_a = a ^ cube(hole_x - counterbore_d / 2 - 2, LA + p["tab_len"] + 1, y - half_y, y + half_y, -1, k["tab_h"])
     piece_b = b ^ cube(LA, LA + p["tab_len"] + LOOSE + BOSS_MARGIN + 2, y - half_y, y + half_y, -1, top)
     return piece_a, piece_b
 
