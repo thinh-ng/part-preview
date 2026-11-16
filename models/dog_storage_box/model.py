@@ -316,6 +316,23 @@ def pick_seam(p):
     return after, x
 
 
+def on_layer(z):
+    """z rounded up to a layer line, so a roof there prints as whole layers."""
+    return math.ceil(round(z / LAYER, 6)) * LAYER
+
+
+def bridged_hole(x, y, z_roof, z_top, d, span_x, span_y):
+    """Round hole starting at a roof over air: first a slot across the whole span (along y when span_y is set,
+    else along x), then a square, then the round hole. Every line printed over air is then a straight bridge
+    held at both ends, instead of a ring around the hole with nothing under it."""
+    if span_y:
+        band = cube(x - d / 2, x + d / 2, y - span_y, y + span_y, z_roof - 0.01, z_roof + LAYER)
+    else:
+        band = cube(x - span_x, x + span_x, y - d / 2, y + d / 2, z_roof - 0.01, z_roof + LAYER)
+    square = cube(x - d / 2, x + d / 2, y - d / 2, y + d / 2, z_roof, z_roof + 2 * LAYER)
+    return band + square + cyl_z(x, y, z_roof + 2 * LAYER - 0.01, z_top, d)
+
+
 def layout(p):
     """Positions derived from the sliders: seam, section 3 length, screw stack heights."""
     p = {**SCREW, **p}
@@ -324,9 +341,9 @@ def layout(p):
     inner_w = WIDTH - 2 * wall
     section_3 = LENGTH - 4 * wall - DIVIDER - p["section_1"] - p["section_2"]
     # Ceiling on a layer line, so the two bridge layers above it print as whole layers.
-    counterbore_depth = math.ceil(round((p["head_h"] + HEAD_CLEAR) / LAYER, 6)) * LAYER
-    tab_h = counterbore_depth + UNDER_HEAD
-    slot_top = tab_h + LOOSE + SLOT_SAG
+    counterbore_depth = on_layer(p["head_h"] + HEAD_CLEAR)
+    tab_h = on_layer(counterbore_depth + UNDER_HEAD)
+    slot_top = on_layer(tab_h + LOOSE + SLOT_SAG)
     # 4 lines of plastic beside the head pocket; wider only grows the bump and the slot roof's unsupported span.
     tab_w = p["head_d"] + 2 * LOOSE + HOLE_SHRINK + 2 * BOSS_MARGIN
     bite = p["floor_screw_len"] - (slot_top - counterbore_depth)    # thread length inside half B's boss
@@ -446,12 +463,9 @@ def parts(p):
         clearance_d = p["screw_d"] + 2 * SLIP + HOLE_SHRINK
         cb = k["counterbore_depth"]
         a -= cyl_z(sx, y, -1, cb, counterbore_d)
-        # The pocket opens on the bed, so its ceiling is a bridge: a slot layer bridges edge to edge, a square
-        # layer bridges across the slot, then the round hole. Ruled lines instead of loose circles, no support.
-        a -= cube(sx - counterbore_d / 2, sx + counterbore_d / 2, y - clearance_d / 2, y + clearance_d / 2, cb - 0.01, cb + LAYER)             ^ cyl_z(sx, y, cb - 0.02, cb + LAYER, counterbore_d)
-        a -= cube(sx - clearance_d / 2, sx + clearance_d / 2, y - clearance_d / 2, y + clearance_d / 2, cb, cb + 2 * LAYER)
-        a -= cyl_z(sx, y, cb + 2 * LAYER - 0.01, k["tab_h"] + 1, clearance_d)
-        b -= cyl_z(sx, y, k["slot_top"] - 0.01, k["pilot_top"], p["pilot_d"] + HOLE_SHRINK)
+        # Both roofs over air (head pocket in A, slot in B) are bridged to the round hole, so no support is needed.
+        a -= bridged_hole(sx, y, cb, k["tab_h"] + 1, clearance_d, counterbore_d / 2, 0) ^ cyl_z(sx, y, -1, k["tab_h"] + 2, counterbore_d)
+        b -= bridged_hole(sx, y, k["slot_top"], k["pilot_top"], p["pilot_d"] + HOLE_SHRINK, 0, tab_w / 2 + LOOSE)
         head_bottom = k["counterbore_depth"] - p["head_h"]
         screws.append(cyl_z(sx, y, head_bottom, k["counterbore_depth"], p["head_d"])
                       + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["floor_screw_len"], p["screw_d"], 24))
@@ -578,7 +592,7 @@ def seam_test(p, a, b):
     p = {**SCREW, **p}
     k = layout(p)
     LA, y = k["seam"], p["tab_inset"]
-    top = math.ceil(round((k["slot_top"] + FLOOR) / LAYER, 6)) * LAYER
+    top = on_layer(k["slot_top"] + FLOOR)
     half_y = k["boss_w"] / 2 + 2
     # Half A: only the tab's end around the head pocket, full tab height; it still slides into the slot.
     hole_x = LA + p["tab_len"] - k["tab_w"] / 2
