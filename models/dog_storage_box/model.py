@@ -22,7 +22,7 @@ PARAMS = [
     dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=105.0),
     dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=1.68),
     dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=12.0),
-    dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=12.0),
+    dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=11.0),
     dict(key="tab_inset", label="Tabs in from long sides (mm)", min=10, max=50, step=1, default=25.0),
     dict(key="floor_style", label="Screw anchor", min=0, max=1, step=1, default=1,
          options=["Two round bumps", "Raised floor sloping away"]),
@@ -46,6 +46,8 @@ BED_Z = 261.0
 FLOOR = 1.2                 # 6 layers at 0.2: all solid top and bottom layers, no infill
 DIVIDER = 1.68              # 4 lines at 0.42
 LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured)
+LAYER = 0.2                 # /printer process layer_height
+SLOT_SAG = 0.3              # extra slot height: the unsupported slot roof droops 0.1-0.2 mm, this keeps it off the tab
 HOLE_SHRINK = 0.15
 ELEPHANT_FOOT = 0.2         # tolerances.json elephant_foot (measured: false): first layer spreads this much per side
 BED_CHAMFER = 0.4           # slant on bed-side edges that slide into or press against another part
@@ -322,14 +324,16 @@ def layout(p):
     seam_after, seam = pick_seam(p)
     inner_w = WIDTH - 2 * wall
     section_3 = LENGTH - 4 * wall - DIVIDER - p["section_1"] - p["section_2"]
-    counterbore_depth = p["head_h"] + HEAD_CLEAR
+    # Ceiling on a layer line, so the two bridge layers above it print as whole layers.
+    counterbore_depth = math.ceil(round((p["head_h"] + HEAD_CLEAR) / LAYER, 6)) * LAYER
     tab_h = counterbore_depth + UNDER_HEAD
-    bite = p["floor_screw_len"] - UNDER_HEAD - LOOSE    # thread length inside half B's boss
-    pilot_top = tab_h + LOOSE + bite + 0.5
+    slot_top = tab_h + LOOSE + SLOT_SAG
+    bite = p["floor_screw_len"] - (slot_top - counterbore_depth)    # thread length inside half B's boss
+    pilot_top = slot_top + bite + 0.5
     hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
     return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
                 low_divider=hand_bottom - LOW_DIVIDER_GAP,
-                counterbore_depth=counterbore_depth, tab_h=tab_h, bite=bite, pilot_top=pilot_top,
+                counterbore_depth=counterbore_depth, tab_h=tab_h, slot_top=slot_top, bite=bite, pilot_top=pilot_top,
                 boss_h=pilot_top + BOSS_CAP, boss_w=p["tab_w"] + 2 * (LOOSE + BOSS_MARGIN))
 
 
@@ -436,13 +440,19 @@ def parts(p):
             outline = tongue_outline(LA, LA, y, tab_len + LOOSE + BOSS_MARGIN, k["boss_w"])
             b += smooth_boss(outline, k["boss_h"], boss_round(k, p), FLOOR + p["boss_smooth"]) ^ shell_b
         # Both sit on the bed, where the first layer spreads: slant the tab's bottom edge in and flare the pocket's mouth.
-        b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, -1, k["tab_h"] + LOOSE)
+        b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, -1, k["slot_top"])
         b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, 0, BED_CHAMFER, bottom_chamfer=-BED_CHAMFER)
         a += tongue(LA, LA, y, tab_len, tab_w, 0, k["tab_h"], bottom_chamfer=BED_CHAMFER)
         sx = LA + tab_len - tab_w / 2
-        a -= cyl_z(sx, y, -1, k["tab_h"] + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
-        a -= cyl_z(sx, y, -1, k["counterbore_depth"], counterbore_d)
-        b -= cyl_z(sx, y, k["tab_h"], k["pilot_top"], p["pilot_d"] + HOLE_SHRINK)
+        clearance_d = p["screw_d"] + 2 * SLIP + HOLE_SHRINK
+        cb = k["counterbore_depth"]
+        a -= cyl_z(sx, y, -1, cb, counterbore_d)
+        # The pocket opens on the bed, so its ceiling is a bridge: a slot layer bridges edge to edge, a square
+        # layer bridges across the slot, then the round hole. Ruled lines instead of loose circles, no support.
+        a -= cube(sx - counterbore_d / 2, sx + counterbore_d / 2, y - clearance_d / 2, y + clearance_d / 2, cb - 0.01, cb + LAYER)             ^ cyl_z(sx, y, cb - 0.02, cb + LAYER, counterbore_d)
+        a -= cube(sx - clearance_d / 2, sx + clearance_d / 2, y - clearance_d / 2, y + clearance_d / 2, cb, cb + 2 * LAYER)
+        a -= cyl_z(sx, y, cb + 2 * LAYER - 0.01, k["tab_h"] + 1, clearance_d)
+        b -= cyl_z(sx, y, k["slot_top"] - 0.01, k["pilot_top"], p["pilot_d"] + HOLE_SHRINK)
         head_bottom = k["counterbore_depth"] - p["head_h"]
         screws.append(cyl_z(sx, y, head_bottom, k["counterbore_depth"], p["head_d"])
                       + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["floor_screw_len"], p["screw_d"], 24))
@@ -561,25 +571,19 @@ def overlap_bite(p):
     return p["screw_len"] - tab_under_head - LOOSE * math.sqrt(2)
 
 
-TEST_MARGIN = 2.0          # plain wall kept between the floor joint and the top joint in the seam test
+def seam_test(p, a, b):
+    """One floor joint, cut just above the slot roof: tab slide, slot roof and head-pocket ceiling, as printed in the box.
 
-
-def seam_test_height(p):
-    """Lowest box height that still holds the floor joint and the top joint whole without them meeting.
-
-    The floor joint is set from the floor and the top joint from the rim, so the seam test is the same box
-    built at this height: both joints exactly as printed in the full box, only the plain wall between gone.
+    The top joint and the screw bite already passed a print, so the bump and the top are left out.
     """
     p = {**SCREW, **p}
     k = layout(p)
-    wall = p["wall"]
-    floor_joint = k["boss_h"]
-    if p["top_joint"] >= 0.5:
-        seat_bottom = DIVIDER_DROP + p["head_h"] + HEAD_CLEAR + LONGEST_SCREW + 0.5 + SEAT_FLOOR
-        top_joint = seat_bottom + OVERLAP_REACH + 2.0 - wall    # down to the foot of the seat's 45° underside
-    else:
-        top_joint = SEAM_DROP - UNDER_HEAD + LONGEST_SCREW + 0.5   # down to the clip posts' pilot holes
-    return math.ceil(floor_joint + TEST_MARGIN + top_joint)
+    LA, y = k["seam"], p["tab_inset"]
+    top = math.ceil(round((k["slot_top"] + FLOOR) / LAYER, 6)) * LAYER
+    half_y = k["boss_w"] / 2 + 2
+    piece_a = a ^ cube(LA - 6, LA + p["tab_len"] + 1, y - half_y, y + half_y, -1, top)
+    piece_b = b ^ cube(LA, LA + p["tab_len"] + LOOSE + BOSS_MARGIN + 2, y - half_y, y + half_y, -1, top)
+    return piece_a, piece_b
 
 
 def build(**p):
