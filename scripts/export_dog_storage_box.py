@@ -177,7 +177,10 @@ def small_parts(suffix=""):
 
 test_a, test_b = model.seam_test(values, a, b)
 plates = [
-    ("Seam test - print first", row([("seam test half A", mesh_of(test_a)), ("seam test half B", mesh_of(test_b))])),
+    # The same pieces twice: with support (old way) next to without (bridged roofs), to compare.
+    ("Seam test - print first", row([("seam test half A", mesh_of(test_a)), ("seam test half B", mesh_of(test_b)),
+                                     ("seam test half A (support)", mesh_of(test_a)),
+                                     ("seam test half B (support)", mesh_of(test_b))])),
 ]
 plates += [("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
            ("Half B", row([("half B", mesh_of(b))]))]
@@ -219,7 +222,7 @@ for plate_index, (plate_name, parts) in enumerate(plates):
         col, plate_row = plate_index % COLUMNS, plate_index // COLUMNS
         items.append((wrapper_id, mesh_id, path, cx + col * PLATE_STRIDE, cy - plate_row * PLATE_STRIDE))
         label = escape(name, {'"': "&quot;"})
-        support = needs_support(mesh)
+        support = needs_support(mesh) or name.endswith("(support)")
         if support:
             print(f"  support on (build plate only) for {name}: {support:.0f} mm² of flat roof")
         support_cfg = ('<metadata key="enable_support" value="1"/>'
