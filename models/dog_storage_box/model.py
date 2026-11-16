@@ -21,8 +21,7 @@ PARAMS = [
     dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=145.0),
     dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=145.0),
     dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=1.68),
-    dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=20.0),
-    dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=11.0),
+    dict(key="tab_len", label="Floor tab reach under B (mm)", min=12, max=30, step=0.5, default=20.0),
     dict(key="tab_inset", label="Tabs in from long sides (mm)", min=10, max=50, step=1, default=25.0),
     dict(key="floor_style", label="Screw anchor", min=0, max=1, step=1, default=0.0,
          options=["Two round bumps", "Raised floor sloping away"]),
@@ -328,20 +327,22 @@ def layout(p):
     counterbore_depth = math.ceil(round((p["head_h"] + HEAD_CLEAR) / LAYER, 6)) * LAYER
     tab_h = counterbore_depth + UNDER_HEAD
     slot_top = tab_h + LOOSE + SLOT_SAG
+    # 4 lines of plastic beside the head pocket; wider only grows the bump and the slot roof's unsupported span.
+    tab_w = p["head_d"] + 2 * LOOSE + HOLE_SHRINK + 2 * BOSS_MARGIN
     bite = p["floor_screw_len"] - (slot_top - counterbore_depth)    # thread length inside half B's boss
     pilot_top = slot_top + bite + 0.5
     hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
     return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
                 low_divider=hand_bottom - LOW_DIVIDER_GAP,
-                counterbore_depth=counterbore_depth, tab_h=tab_h, slot_top=slot_top, bite=bite, pilot_top=pilot_top,
-                boss_h=pilot_top + BOSS_CAP, boss_w=p["tab_w"] + 2 * (LOOSE + BOSS_MARGIN))
+                counterbore_depth=counterbore_depth, tab_h=tab_h, tab_w=tab_w, slot_top=slot_top, bite=bite, pilot_top=pilot_top,
+                boss_h=pilot_top + BOSS_CAP, boss_w=tab_w + 2 * (LOOSE + BOSS_MARGIN))
 
 
 def parts(p):
     p = {**SCREW, **p}
     L, W, H, wall = LENGTH, WIDTH, p["height"], p["wall"]
     k = layout(p)
-    tab_len, tab_w, tab_inset = p["tab_len"], p["tab_w"], p["tab_inset"]
+    tab_len, tab_w, tab_inset = p["tab_len"], k["tab_w"], p["tab_inset"]
     counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
     if p["section_1"] < MIN_SECTION or p["section_2"] < MIN_SECTION:
         raise ValueError(f"sections must be at least {MIN_SECTION:.0f} mm long")
@@ -351,10 +352,8 @@ def parts(p):
     LA = k["seam"]
     if k["section_3"] < MIN_SECTION:
         raise ValueError(f"sections 1 + 2 are too long: section 3 would be {k['section_3']:.0f} mm")
-    if tab_w < counterbore_d + 2 * 1.2:
-        raise ValueError(f"tab is narrower than the screw head needs: at least {counterbore_d + 2.4:.1f} mm")
     if tab_len < tab_w:
-        raise ValueError("tab reach must be at least the tab width, so the screw fits on the tab")
+        raise ValueError(f"tab reach must be at least the tab width ({tab_w:.1f} mm), so the screw fits on the tab")
     if tab_inset - k["boss_w"] / 2 < wall + LOOSE:
         raise ValueError("floor tabs run into the long walls: raise 'tabs in from long sides'")
     if W - 2 * tab_inset < k["boss_w"]:
@@ -582,7 +581,7 @@ def seam_test(p, a, b):
     top = math.ceil(round((k["slot_top"] + FLOOR) / LAYER, 6)) * LAYER
     half_y = k["boss_w"] / 2 + 2
     # Half A: only the tab's end around the head pocket, full tab height; it still slides into the slot.
-    hole_x = LA + p["tab_len"] - p["tab_w"] / 2
+    hole_x = LA + p["tab_len"] - k["tab_w"] / 2
     counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
     piece_a = a ^ cube(hole_x - counterbore_d / 2 - 2, LA + p["tab_len"] + 1, y - half_y, y + half_y, -1, k["tab_h"])
     piece_b = b ^ cube(LA, LA + p["tab_len"] + LOOSE + BOSS_MARGIN + 2, y - half_y, y + half_y, -1, top)
