@@ -17,25 +17,25 @@ import numpy as np
 
 NAME = "Dog storage box (split, screwed from below)"
 PARAMS = [
-    dict(key="height", label="Height (mm)", min=40, max=250, step=1, default=100.0),
-    dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=183.0),
-    dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=105.0),
+    dict(key="height", label="Height (mm)", min=40, max=250, step=1, default=90.0),
+    dict(key="section_1", label="Section 1 length (mm)", min=20, max=320, step=1, default=145.0),
+    dict(key="section_2", label="Section 2 length (mm); section 3 gets the rest", min=20, max=320, step=1, default=145.0),
     dict(key="wall", label="Wall thickness (mm)", min=1.26, max=4.2, step=0.42, default=1.68),
-    dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=12.0),
+    dict(key="tab_len", label="Floor tab reach under B (mm)", min=11, max=30, step=0.5, default=20.0),
     dict(key="tab_w", label="Floor tab width (mm)", min=11, max=24, step=0.5, default=11.0),
     dict(key="tab_inset", label="Tabs in from long sides (mm)", min=10, max=50, step=1, default=25.0),
-    dict(key="floor_style", label="Screw anchor", min=0, max=1, step=1, default=1,
+    dict(key="floor_style", label="Screw anchor", min=0, max=1, step=1, default=0.0,
          options=["Two round bumps", "Raised floor sloping away"]),
-    dict(key="ramp_len", label="Raised floor slope length (mm): longer is gentler; runs under dividers, capped at half B's end", min=10, max=300, step=1, default=120.0),
+    dict(key="ramp_len", label="Raised floor slope length (mm): longer is gentler; runs under dividers, capped at half B's end", min=10, max=300, step=1, default=250.0),
     dict(key="boss_smooth", label="Round bump smoothness (mm)", min=0.5, max=6, step=0.25, default=4.0),
     dict(key="hand_w", label="Hand hole width (mm)", min=40, max=105, step=1, default=65.0),
     dict(key="hand_h", label="Hand hole height (mm)", min=10, max=45, step=1, default=15.0),
-    dict(key="top_joint", label="Top of the seam", min=0, max=1, step=1, default=1,
+    dict(key="top_joint", label="Top of the seam", min=0, max=1, step=1, default=1.0,
          options=["Screwed clip", "Overlap tabs (no clip)"]),
     dict(key="clip_leg", label="Top clip reach down (mm)", min=4, max=20, step=0.5, default=8.0),
     dict(key="clip_gap", label="Top clip gap per side (mm)", min=0.0, max=0.5, step=0.05, default=0.25),
     dict(key="explode", label="Explode view (mm)", min=0, max=80, step=1, default=0.0),
-    dict(key="show", label="Show", min=0, max=3, step=1, default=0,
+    dict(key="show", label="Show", min=0, max=3, step=1, default=0.0,
          options=["Whole box", "Half A only", "Half B only", "Top clip only"]),
 ]
 
