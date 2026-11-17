@@ -1,6 +1,6 @@
 """Export the dog storage box as one Bambu Studio 3MF with plates, from a part-preview server's saved values.
 
-Plate 1 is the seam test (print it first): one floor joint cut just above the slot, plate 2 is half A (with the clip when the top joint uses one), plate 3 is half B. The file layout copies what
+Plate 1 is half A (with the clip when the top joint uses one), plate 2 is half B. The file layout copies what
 Bambu Studio itself writes (wrapper objects, one mesh file per part, plates in model_settings.config).
 
 Preview images (plate pictures and a cover of the assembled box) are rendered with pyvista.
@@ -175,13 +175,7 @@ def small_parts(suffix=""):
     return [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
 
 
-test_a, test_b = model.seam_test(values, a, b)
-plates = [
-    # The same pieces twice: with support (old way) next to without (bridged roofs), to compare.
-    ("Seam test - print first", row([("seam test half A", mesh_of(test_a)), ("seam test half B", mesh_of(test_b)),
-                                     ("seam test half A (support)", mesh_of(test_a)),
-                                     ("seam test half B (support)", mesh_of(test_b))])),
-]
+plates = []
 plates += [("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
            ("Half B", row([("half B", mesh_of(b))]))]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
@@ -222,7 +216,7 @@ for plate_index, (plate_name, parts) in enumerate(plates):
         col, plate_row = plate_index % COLUMNS, plate_index // COLUMNS
         items.append((wrapper_id, mesh_id, path, cx + col * PLATE_STRIDE, cy - plate_row * PLATE_STRIDE))
         label = escape(name, {'"': "&quot;"})
-        support = needs_support(mesh) or name.endswith("(support)")
+        support = needs_support(mesh)
         if support:
             print(f"  support on (build plate only) for {name}: {support:.0f} mm² of flat roof")
         support_cfg = ('<metadata key="enable_support" value="1"/>'

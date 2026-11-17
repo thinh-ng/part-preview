@@ -44,9 +44,16 @@ BED = 256.0                 # /printer bed, extruder 1
 BED_Z = 261.0
 FLOOR = 1.2                 # 6 layers at 0.2: all solid top and bottom layers, no infill
 DIVIDER = 1.68              # 4 lines at 0.42
-LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured)
+LOOSE, SLIP = 0.30, 0.20    # tolerances.json starting values (not yet measured); LOOSE kept for the stacking step
+# Joint fits. Sideways the owner chose 0.1 mm over the 0.3 that slid freely in the seam test; a tight tab is
+# sanded on its open sides. Up/down, every face a screw pulls on touches (layers make Z exact): a gap there
+# let the screws pull the halves crooked in the seam test.
+FIT = 0.10
+RELIEF = 0.30               # gap on faces that must never touch (the top tab's slope), so they cannot wedge
+ROOF_STRIP = 2.0            # slot roof edges the floor tab bears on; the middle is raised for bridge sag
+TOP_FLAT = 1.68             # flat under the top tab's root, resting on half B's seam wall top
 LAYER = 0.2                 # /printer process layer_height
-SLOT_SAG = 0.3              # extra slot height: the unsupported slot roof droops 0.1-0.2 mm, this keeps it off the tab
+SLOT_SAG = 0.3              # middle of the slot roof raised this much: a bridge droops 0.1-0.2 mm
 HOLE_SHRINK = 0.15
 ELEPHANT_FOOT = 0.2         # tolerances.json elephant_foot (measured: false): first layer spreads this much per side
 BED_CHAMFER = 0.4           # slant on bed-side edges that slide into or press against another part
@@ -85,7 +92,9 @@ SEG = 48
 # One screw everywhere: 3 mm self-tapping, 12 or 13 mm long (ST2.9: pan ISO 7049, flat ISO 7050, or round/truss).
 # The flat-bottomed head pocket takes any of those heads up to 7 mm wide; pan heads (2.2 mm) sit about flush,
 # lower round and flat heads sit a little below, and a flat head seats on the hole's edge.
-SCREW = dict(screw_d=2.9, screw_len=12.0, floor_screw_len=8.0, head_d=7.0, head_h=2.2, pilot_d=2.4)
+# head_d: owner measured 4.5 mm, "around 5"; sized for 5.0 so a slightly larger head still fits.
+# head_h: the 2.6 mm pocket is deeper than ISO 7049 ST2.9 (k 2.4), so any pan head sits below the surface.
+SCREW = dict(screw_d=2.9, screw_len=12.0, floor_screw_len=8.0, head_d=5.0, head_h=2.2, pilot_d=2.4)
 LONGEST_SCREW = 13.0       # top pilot holes are deep enough for the 13 mm ISO length too
 # Floor screws are 3 x 8: the shortest length that still bites 2x its diameter; a longer one makes the bumps taller.
 
@@ -133,7 +142,7 @@ def round_inset(radius, depth):
 def boss_round(k, p):
     """Top edge radius from the smoothness slider, limited so the pilot hole keeps its wall."""
     keep = (k["boss_w"] / 2) - (p["pilot_d"] / 2 + PILOT_WALL)
-    radius = min(p["boss_smooth"], k["boss_h"] - (k["tab_h"] + LOOSE))
+    radius = min(p["boss_smooth"], k["boss_h"] - k["slot_top"])
     while radius > 0.25 and round_inset(radius, BOSS_CAP) > keep:
         radius -= 0.25
     return radius
@@ -290,7 +299,7 @@ def ramp_length(p, k):
 
     The screw sits under the flat part, so the slope length never changes how well it holds.
     """
-    flat_end = k["seam"] + p["tab_len"] + LOOSE + BOSS_MARGIN
+    flat_end = k["seam"] + p["tab_len"] + FIT + BOSS_MARGIN
     return min(p["ramp_len"], LENGTH - p["wall"] - 5 - flat_end)
 
 
@@ -333,6 +342,14 @@ def bridged_hole(x, y, z_roof, z_top, d, span_x, span_y):
     return band + square + cyl_z(x, y, z_roof + 2 * LAYER - 0.01, z_top, d)
 
 
+def head_pocket_d(p):
+    return p["head_d"] + 2 * FIT + HOLE_SHRINK
+
+
+def clearance_d(p):
+    return p["screw_d"] + 2 * FIT + HOLE_SHRINK
+
+
 def layout(p):
     """Positions derived from the sliders: seam, section 3 length, screw stack heights."""
     p = {**SCREW, **p}
@@ -343,16 +360,16 @@ def layout(p):
     # Ceiling on a layer line, so the two bridge layers above it print as whole layers.
     counterbore_depth = on_layer(p["head_h"] + HEAD_CLEAR)
     tab_h = on_layer(counterbore_depth + UNDER_HEAD)
-    slot_top = on_layer(tab_h + LOOSE + SLOT_SAG)
+    slot_top = on_layer(tab_h + SLOT_SAG)     # raised middle of the roof; its edges sit on the tab at tab_h
     # 4 lines of plastic beside the head pocket; wider only grows the bump and the slot roof's unsupported span.
-    tab_w = p["head_d"] + 2 * LOOSE + HOLE_SHRINK + 2 * BOSS_MARGIN
+    tab_w = head_pocket_d(p) + 2 * BOSS_MARGIN
     bite = p["floor_screw_len"] - (slot_top - counterbore_depth)    # thread length inside half B's boss
     pilot_top = slot_top + bite + 0.5
     hand_bottom = p["height"] - HANDLE_TOP - p["hand_h"] - BAND
     return dict(seam=seam, seam_after=seam_after, inner_w=inner_w, section_3=section_3, section_3_w=(inner_w - DIVIDER) / 2,
                 low_divider=hand_bottom - LOW_DIVIDER_GAP,
                 counterbore_depth=counterbore_depth, tab_h=tab_h, tab_w=tab_w, slot_top=slot_top, bite=bite, pilot_top=pilot_top,
-                boss_h=pilot_top + BOSS_CAP, boss_w=tab_w + 2 * (LOOSE + BOSS_MARGIN))
+                boss_h=pilot_top + BOSS_CAP, boss_w=tab_w + 2 * (FIT + BOSS_MARGIN))
 
 
 def parts(p):
@@ -360,7 +377,7 @@ def parts(p):
     L, W, H, wall = LENGTH, WIDTH, p["height"], p["wall"]
     k = layout(p)
     tab_len, tab_w, tab_inset = p["tab_len"], k["tab_w"], p["tab_inset"]
-    counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
+    counterbore_d = head_pocket_d(p)
     if p["section_1"] < MIN_SECTION or p["section_2"] < MIN_SECTION:
         raise ValueError(f"sections must be at least {MIN_SECTION:.0f} mm long")
     if k["seam"] is None:
@@ -449,29 +466,30 @@ def parts(p):
 
     # Floor joint.
     if raised:
-        b += floor_ramp(LA, tab_len + LOOSE + BOSS_MARGIN, ramp_len, k["boss_h"], wall, W - wall) ^ shell_b
+        b += floor_ramp(LA, tab_len + FIT + BOSS_MARGIN, ramp_len, k["boss_h"], wall, W - wall) ^ shell_b
     screws = []
     for y in (tab_inset, W - tab_inset):
         if not raised:
-            outline = tongue_outline(LA, LA, y, tab_len + LOOSE + BOSS_MARGIN, k["boss_w"])
+            outline = tongue_outline(LA, LA, y, tab_len + FIT + BOSS_MARGIN, k["boss_w"])
             b += smooth_boss(outline, k["boss_h"], boss_round(k, p), FLOOR + p["boss_smooth"]) ^ shell_b
         # Both sit on the bed, where the first layer spreads: slant the tab's bottom edge in and flare the pocket's mouth.
-        b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, -1, k["slot_top"])
-        b -= tongue(LA - 1, LA, y, tab_len + LOOSE, tab_w + 2 * LOOSE, 0, BED_CHAMFER, bottom_chamfer=-BED_CHAMFER)
+        # The tab bears on the roof's edges (no gap: the screw cannot pull it up); the roof's middle is raised for sag.
+        b -= tongue(LA - 1, LA, y, tab_len + FIT, tab_w + 2 * FIT, -1, k["tab_h"])
+        b -= tongue(LA - 1, LA, y, tab_len + FIT - ROOF_STRIP, tab_w + 2 * FIT - 2 * ROOF_STRIP, -1, k["slot_top"])
+        b -= tongue(LA - 1, LA, y, tab_len + FIT, tab_w + 2 * FIT, 0, BED_CHAMFER, bottom_chamfer=-BED_CHAMFER)
         a += tongue(LA, LA, y, tab_len, tab_w, 0, k["tab_h"], bottom_chamfer=BED_CHAMFER)
         sx = LA + tab_len - tab_w / 2
-        clearance_d = p["screw_d"] + 2 * SLIP + HOLE_SHRINK
         cb = k["counterbore_depth"]
         a -= cyl_z(sx, y, -1, cb, counterbore_d)
         # Both roofs over air (head pocket in A, slot in B) are bridged to the round hole, so no support is needed.
-        a -= bridged_hole(sx, y, cb, k["tab_h"] + 1, clearance_d, counterbore_d / 2, 0) ^ cyl_z(sx, y, -1, k["tab_h"] + 2, counterbore_d)
-        b -= bridged_hole(sx, y, k["slot_top"], k["pilot_top"], p["pilot_d"] + HOLE_SHRINK, 0, tab_w / 2 + LOOSE)
+        a -= bridged_hole(sx, y, cb, k["tab_h"] + 1, clearance_d(p), counterbore_d / 2, 0) ^ cyl_z(sx, y, -1, k["tab_h"] + 2, counterbore_d)
+        b -= bridged_hole(sx, y, k["slot_top"], k["pilot_top"], p["pilot_d"] + HOLE_SHRINK, 0, tab_w / 2 + FIT - ROOF_STRIP)
         head_bottom = k["counterbore_depth"] - p["head_h"]
         screws.append(cyl_z(sx, y, head_bottom, k["counterbore_depth"], p["head_d"])
                       + cyl_z(sx, y, k["counterbore_depth"], k["counterbore_depth"] + p["floor_screw_len"], p["screw_d"], 24))
 
     if overlap:
-        a, b, top_screws = overlap_tabs(p, a, b, shell, shell_b, LA, seam_top, counterbore_d)
+        a, b, top_screws = overlap_tabs(p, a, b, shell, shell_b, LA, seam_top)
         screws += top_screws
         clip, clip_top = None, seam_top
     else:
@@ -526,13 +544,30 @@ def parts(p):
     return a, b, clip, screws, dict(clip_top=clip_top, z_low=k["low_divider"])
 
 
-def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
+def overlap_profile(LA, top):
+    """Top tab cross-section: flat under its root (it rests on half B's seam wall), then sloping up to the tip,
+    steeper than 45° so it prints without support."""
+    x1, z_low = LA + OVERLAP_REACH, top - OVERLAP_TIP - OVERLAP_REACH
+    return mf.CrossSection([[(LA - 0.01, z_low), (LA + TOP_FLAT, z_low), (x1, top - OVERLAP_TIP), (x1, top),
+                             (LA - 0.01, top)]])
+
+
+def overlap_underside(x_rel, top):
+    """Height of the top tab's underside at x_rel past the seam."""
+    z_low = top - OVERLAP_TIP - OVERLAP_REACH
+    if x_rel <= TOP_FLAT:
+        return z_low
+    return z_low + (x_rel - TOP_FLAT) * OVERLAP_REACH / (OVERLAP_REACH - TOP_FLAT)
+
+
+def overlap_tabs(p, a, b, shell, shell_b, LA, top):
     """Two tabs on half A's seam wall reach over half B's and are screwed down into seats in half B."""
     W, wall = WIDTH, p["wall"]
     x1 = LA + OVERLAP_REACH
     z_low = top - OVERLAP_TIP - OVERLAP_REACH
-    profile = mf.CrossSection([[(LA - 0.01, z_low), (x1, top - OVERLAP_TIP), (x1, top), (LA - 0.01, top)]])
-    recess = p["head_h"] + HEAD_CLEAR
+    profile = overlap_profile(LA, top)
+    counterbore_d = head_pocket_d(p)
+    recess = on_layer(p["head_h"] + HEAD_CLEAR)
     head_bottom = top - recess
     screws = []
     # One tab at each end of the seam; the floor screws and these hold it, the middle of the top edge stays free.
@@ -545,9 +580,12 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
             return rounded_box_section(x0, xe, ys - half_w, ys + half_w, [0.05, r, r, 0.05]).extrude(top + 2).translate([0, 0, -1])
 
         tab = along_y(profile, OVERLAP_W) ^ plan(LA - 1, x1, OVERLAP_W / 2)
-        room = (along_y(profile.offset(LOOSE, mf.JoinType.Miter), OVERLAP_W + 2 * LOOSE)
-                + cube(LA - 1, x1 + LOOSE, ys - OVERLAP_W / 2 - LOOSE, ys + OVERLAP_W / 2 + LOOSE, top, top + 5)) \
-            ^ plan(LA - 0.5, x1 + LOOSE, OVERLAP_W / 2 + LOOSE)
+        # The slope gets RELIEF so it never wedges; under the flat, half B stays solid up to the tab, so the screw
+        # pulls flat onto flat and cannot drop half A or push it away.
+        room = (along_y(profile.offset(RELIEF, mf.JoinType.Miter), OVERLAP_W + 2 * FIT)
+                + cube(LA - 1, x1 + FIT, ys - OVERLAP_W / 2 - FIT, ys + OVERLAP_W / 2 + FIT, top, top + 5)) \
+            ^ plan(LA - 0.5, x1 + FIT, OVERLAP_W / 2 + FIT)
+        room -= cube(LA - 1, LA + TOP_FLAT, -1, W + 1, z_low - 5, z_low)
         # Half B's seat hangs off its seam wall: deep enough for the screw, then a 45° underside back to the wall,
         # so it prints without support and doesn't run down to the floor as a column.
         half_w = OVERLAP_W / 2 + OVERLAP_POST_MARGIN
@@ -561,8 +599,8 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
         a += tab ^ shell
         b += seat ^ shell_b
         b -= room
-        xs = LA + overlap_screw_x(p, counterbore_d)
-        a -= cyl_z(xs, ys, z_low - 1, top + 1, p["screw_d"] + 2 * SLIP + HOLE_SHRINK)
+        xs = LA + overlap_screw_x(p)
+        a -= cyl_z(xs, ys, z_low - 1, top + 1, clearance_d(p))
         a -= cyl_z(xs, ys, head_bottom, top + 1, counterbore_d)
         b -= cyl_z(xs, ys, head_bottom - LONGEST_SCREW - 0.5, top, p["pilot_d"] + HOLE_SHRINK)
         screws.append(cyl_z(xs, ys, head_bottom, head_bottom + p["head_h"], p["head_d"])
@@ -570,34 +608,23 @@ def overlap_tabs(p, a, b, shell, shell_b, LA, top, counterbore_d):
     return a, b, screws
 
 
-def overlap_screw_x(p, counterbore_d):
-    """Screw distance from the seam: as far out on the tab as its head pocket allows, where the 45° tab is thinnest,
+def overlap_screw_x(p):
+    """Screw distance from the seam: as far out on the tab as its head pocket allows, where the tab is thinnest,
     so less of the screw is spent in half A and more bites into half B."""
-    recess = p["head_h"] + HEAD_CLEAR
-    return OVERLAP_TIP + OVERLAP_REACH - (recess + POCKET_FLOOR + counterbore_d / 2)
+    recess = on_layer(p["head_h"] + HEAD_CLEAR)
+    x = TOP_FLAT    # walk out until the tab under the pocket's outer edge is down to POCKET_FLOOR
+    while x < OVERLAP_REACH and 100 - overlap_underside(x + 0.05, 100) >= recess + POCKET_FLOOR:
+        x += 0.05
+    return x - head_pocket_d(p) / 2
 
 
 def overlap_bite(p):
     """Thread length of a top screw inside half B's seat."""
-    counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
-    tab_under_head = OVERLAP_TIP + OVERLAP_REACH - overlap_screw_x(p, counterbore_d) - (p["head_h"] + HEAD_CLEAR)
-    return p["screw_len"] - tab_under_head - LOOSE * math.sqrt(2)
-
-
-def seam_test(p, a, b):
-    """One floor joint as printed in the box: the tab end with its head pocket, and half B's bump with the slot
-    and pilot hole, so a real screw can be driven in. The top joint already passed a print and is left out."""
-    p = {**SCREW, **p}
-    k = layout(p)
-    LA, y = k["seam"], p["tab_inset"]
-    top = k["boss_h"] + 1
-    half_y = k["boss_w"] / 2 + 2
-    # Half A: only the tab's end around the head pocket, full tab height; it still slides into the slot.
-    hole_x = LA + p["tab_len"] - k["tab_w"] / 2
-    counterbore_d = p["head_d"] + 2 * LOOSE + HOLE_SHRINK
-    piece_a = a ^ cube(hole_x - counterbore_d / 2 - 2, LA + p["tab_len"] + 1, y - half_y, y + half_y, -1, k["tab_h"])
-    piece_b = b ^ cube(LA, LA + p["tab_len"] + LOOSE + BOSS_MARGIN + 2, y - half_y, y + half_y, -1, top)
-    return piece_a, piece_b
+    x = overlap_screw_x(p)
+    head_bottom = 100 - on_layer(p["head_h"] + HEAD_CLEAR)
+    slope = OVERLAP_REACH / (OVERLAP_REACH - TOP_FLAT)
+    seat_surface = overlap_underside(x, 100) - RELIEF * math.sqrt(1 + slope * slope)
+    return p["screw_len"] - (head_bottom - seat_surface)
 
 
 def build(**p):
@@ -646,7 +673,7 @@ def stats(p: dict[str, float]) -> dict[str, str]:
     overlap = p.get("top_joint", 1) >= 0.5
     top_count = 2
     ramp = ramp_length(p, k)
-    anchor = (f"floor raised {k['boss_h']:.1f} mm for {p['tab_len'] + LOOSE + BOSS_MARGIN:.0f} mm, "
+    anchor = (f"floor raised {k['boss_h']:.1f} mm for {p['tab_len'] + FIT + BOSS_MARGIN:.0f} mm, "
               f"sloping down over {ramp:.0f} mm (steepest {math.degrees(math.atan(1.875 * (k['boss_h'] - FLOOR) / ramp)):.0f}°)"
               if p["floor_style"] >= 0.5 else f"two bumps {k['boss_h']:.1f} mm tall, top edge radius {boss_round(k, p):.2f} mm")
     return {
@@ -661,5 +688,5 @@ def stats(p: dict[str, float]) -> dict[str, str]:
                      f"{top_count}x 12-13 mm (top)" + ("" if overlap else "; 1 clip")),
         "top screw bite": (f"{overlap_bite(p):.1f} mm into half B's posts" if overlap
                            else f"{p['screw_len'] - UNDER_HEAD:.1f} mm into half A's posts"),
-        "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * SLIP:.1f} mm, head pocket {p['head_d'] + 2 * LOOSE:.1f} mm wide x {p['head_h'] + HEAD_CLEAR:.1f} mm deep",
+        "screw holes": f"pilot {p['pilot_d']:.1f} mm, clearance {p['screw_d'] + 2 * FIT:.1f} mm, head pocket {p['head_d'] + 2 * FIT:.1f} mm wide x {k['counterbore_depth']:.1f} mm deep",
     }
