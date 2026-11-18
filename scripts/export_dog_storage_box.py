@@ -22,6 +22,7 @@ import trimesh
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "models" / "dog_storage_box"))
 import model  # noqa: E402
+from print_checks import require_no_overhang_contacts  # noqa: E402
 
 OUT = HERE.parent / "prints" / "dog-storage-box" / "dog-storage-box.3mf"
 SERVER = sys.argv[1] if len(sys.argv) > 1 else "http://pi4.local:8765"
@@ -175,8 +176,12 @@ def small_parts(suffix=""):
     return [] if clip is None else [(f"top clip{suffix}", mesh_of(clip, flip=True))]
 
 
+print("overhang check:")
+require_no_overhang_contacts({name: mesh_in_place(shape) for name, shape in
+                              (("half A", a), ("half B", b), ("clip", clip)) if shape is not None})
+
 plates = []
-plates += [("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
+plates +=[("Half A" + (" + clip" if clip is not None else ""), row([("half A", mesh_of(a)), *small_parts()])),
            ("Half B", row([("half B", mesh_of(b))]))]
 COLUMNS = math.ceil(math.sqrt(len(plates)))   # Bambu Studio's plate grid: plates fill rows left to right, rows go down
 
